@@ -204,7 +204,7 @@ impl JieqiOpeningBook {
 
         // Sort moves by priority for each entry
         for entry in entries.values_mut() {
-            entry.moves.sort_by(|a, b| b.priority.cmp(&a.priority));
+            entry.moves.sort_by_key(|m| std::cmp::Reverse(m.priority));
         }
 
         Ok(entries.into_values().collect())

@@ -95,6 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get install -y qemu-user-static
           cd engine_assets
           echo "=== Testing Pikafish engine: initial position, depth 20 ==="
           echo -e "uci\nisready\nucinewgame\nposition startpos\ngo depth 20\nquit" | qemu-aarch64-static ./pikafish-armv8 2>&1 || true
