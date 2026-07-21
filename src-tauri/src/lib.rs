@@ -5,8 +5,6 @@
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri::{AppHandle, Emitter};
-#[cfg(target_os = "android")]
-use tauri::Manager;
 use std::sync::{Arc, Mutex};
 use tauri::async_runtime;
 use std::process::Command;
@@ -841,6 +839,10 @@ async fn save_game_notation_with_dialog(content: String, default_filename: Strin
 #[cfg(target_os = "android")]
 #[tauri::command]
 async fn extract_bundled_engine(app: AppHandle) -> Result<serde_json::Value, String> {
+    // Embedded engine binary and NNUE (compiled at build time)
+    const ENGINE_BYTES: &[u8] = include_bytes!("../engines/pikafish-armv8");
+    const NNUE_BYTES: &[u8] = include_bytes!("../engines/nnue.bin");
+
     let bundle_identifier = &app.config().identifier;
     let engine_dir = format!("/data/data/{}/files/engines", bundle_identifier);
     let engine_path_str = format!("{}/pikafish-armv8", engine_dir);
@@ -866,17 +868,11 @@ async fn extract_bundled_engine(app: AppHandle) -> Result<serde_json::Value, Str
         return Err(format!("Failed to create engine directory: {}", e));
     }
 
-    // Get the resource directory where bundled files are
-    let resource_dir = app.path().resource_dir()
-        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
-    let bundled_engine = resource_dir.join("engines/pikafish-armv8");
-    let bundled_nnue = resource_dir.join("engines/nnue.bin");
+    let _ = app.emit("engine-output", format!("[DEBUG] Writing bundled engine to {}", engine_path.display()));
 
-    let _ = app.emit("engine-output", format!("[DEBUG] Extracting bundled engine from {} to {}", bundled_engine.display(), engine_path.display()));
-
-    // Copy the engine binary
-    if let Err(e) = fs::copy(&bundled_engine, &engine_path) {
-        return Err(format!("Failed to copy bundled engine: {}", e));
+    // Write the embedded engine binary
+    if let Err(e) = fs::write(&engine_path, ENGINE_BYTES) {
+        return Err(format!("Failed to write engine binary: {}", e));
     }
 
     // Set executable permission
@@ -884,12 +880,12 @@ async fn extract_bundled_engine(app: AppHandle) -> Result<serde_json::Value, Str
     perms.set_mode(0o755);
     fs::set_permissions(&engine_path, perms).map_err(|e| e.to_string())?;
 
-    // Copy the NNUE file
-    if let Err(e) = fs::copy(&bundled_nnue, &nnue_path) {
-        return Err(format!("Failed to copy bundled NNUE: {}", e));
+    // Write the embedded NNUE file
+    if let Err(e) = fs::write(&nnue_path, NNUE_BYTES) {
+        return Err(format!("Failed to write NNUE file: {}", e));
     }
 
-    let _ = app.emit("engine-output", format!("[DEBUG] Bundled engine extracted successfully to {}", engine_dir));
+    let _ = app.emit("engine-output", format!("[DEBUG] Bundled engine extracted successfully (engine: {} bytes, nnue: {} bytes)", ENGINE_BYTES.len(), NNUE_BYTES.len()));
 
     Ok(engine_data)
 }
