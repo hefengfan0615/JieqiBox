@@ -837,9 +837,10 @@ async fn save_game_notation_with_dialog(content: String, default_filename: Strin
 
 /// Copy bundled engine assets from Tauri resources to internal storage on Android.
 /// This is called on first launch to set up the bundled Pikafish engine.
+/// Returns the engine data (id, name, path) so the frontend can register and load it.
 #[cfg(target_os = "android")]
 #[tauri::command]
-async fn extract_bundled_engine(app: AppHandle) -> Result<(), String> {
+async fn extract_bundled_engine(app: AppHandle) -> Result<serde_json::Value, String> {
     let bundle_identifier = &app.config().identifier;
     let engine_dir = format!("/data/data/{}/files/engines", bundle_identifier);
     let engine_path_str = format!("{}/pikafish-armv8", engine_dir);
@@ -848,9 +849,16 @@ async fn extract_bundled_engine(app: AppHandle) -> Result<(), String> {
     let engine_path = Path::new(&engine_path_str);
     let nnue_path = Path::new(&nnue_path_str);
 
+    let engine_data = serde_json::json!({
+        "id": "bundled_pikafish",
+        "name": "Pikafish (Bundled)",
+        "path": engine_path_str,
+        "args": ""
+    });
+
     if engine_path.exists() && nnue_path.exists() {
         let _ = app.emit("engine-output", "[DEBUG] Bundled engine already exists, skipping extraction");
-        return Ok(());
+        return Ok(engine_data);
     }
 
     // Ensure the engine directory exists
@@ -883,17 +891,7 @@ async fn extract_bundled_engine(app: AppHandle) -> Result<(), String> {
 
     let _ = app.emit("engine-output", format!("[DEBUG] Bundled engine extracted successfully to {}", engine_dir));
 
-    // Auto-register the engine in config
-    let engine_data = serde_json::json!({
-        "id": "bundled_pikafish",
-        "name": "Pikafish (Bundled)",
-        "path": engine_path_str,
-        "args": ""
-    });
-
-    app.emit("android-engine-added", engine_data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    Ok(engine_data)
 }
 
 /// Copy text to clipboard

@@ -106,10 +106,27 @@
       if (isAndroidPlatform()) {
         try {
           console.log('[DEBUG] App: Android detected, extracting bundled engine...')
-          await invoke('extract_bundled_engine')
-          console.log('[DEBUG] App: Bundled engine extraction completed')
+          const engineData: any = await invoke('extract_bundled_engine')
+          console.log('[DEBUG] App: Bundled engine extraction result:', engineData)
+
+          // Register the engine in config
+          const engines = configManager.getEngines()
+          const alreadyExists = engines.some((e: any) => e.id === engineData.id)
+          if (!alreadyExists) {
+            engines.push(engineData)
+            await configManager.saveEngines(engines)
+            console.log('[DEBUG] App: Added bundled engine to config')
+          }
+
+          // Auto-load the engine
+          const { ManagedEngine } = await import('./composables/useConfigManager')
+          const engToLoad = engines.find((e: any) => e.id === engineData.id)
+          if (engToLoad) {
+            await engine.loadEngine(engToLoad)
+            console.log('[DEBUG] App: Bundled engine loaded')
+          }
         } catch (e) {
-          console.warn('[DEBUG] App: Bundled engine extraction failed (may already exist):', e)
+          console.warn('[DEBUG] App: Bundled engine extraction failed:', e)
         }
       }
 
