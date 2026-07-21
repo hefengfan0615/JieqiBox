@@ -16,6 +16,14 @@ export interface EngineLine {
   kind: 'sent' | 'recv'
 }
 
+// Interface for android-engine-added event payload
+interface EngineData {
+  id: string
+  name: string
+  path: string
+  args: string
+}
+
 export function useUciEngine(generateFen: () => string, gameState: any) {
   const { t } = useI18n()
   const { useNewFenFormat, validationTimeout } = useInterfaceSettings()
@@ -1150,6 +1158,44 @@ export function useUciEngine(generateFen: () => string, gameState: any) {
     } else {
       console.log('[DEBUG] useUciEngine: Skipping auto-load in match mode')
     }
+
+    // Listen for android-engine-added event from Rust backend
+    // This handles the case where the bundled engine is extracted on Android
+    listen<EngineData>('android-engine-added', async (event) => {
+      const engineData = event.payload
+      console.log('[DEBUG] useUciEngine: Received android-engine-added event:', engineData)
+
+      const { id, name, path } = engineData
+      const configManager = useConfigManager()
+      await configManager.loadConfig()
+      const existingEngines = configManager.getEngines()
+
+      // Check if the engine is already registered
+      const alreadyExists = existingEngines.some(e => e.id === id)
+      if (!alreadyExists) {
+        const newEngine: ManagedEngine = {
+          id,
+          name,
+          path,
+          args: '',
+        }
+        configManager.addEngine(newEngine)
+        await configManager.saveConfig()
+        console.log('[DEBUG] useUciEngine: Added bundled engine to config:', newEngine)
+      }
+
+      // Auto-load the bundled engine
+      if (!isEngineLoaded.value && !isEngineLoading.value) {
+        const engines = configManager.getEngines()
+        const engineToLoad = engines.find(e => e.id === id)
+        if (engineToLoad) {
+          console.log('[DEBUG] useUciEngine: Auto-loading bundled engine:', engineToLoad.name)
+          await loadEngine(engineToLoad)
+        }
+      }
+    }).catch(e => {
+      console.warn('[DEBUG] useUciEngine: Failed to listen for android-engine-added event:', e)
+    })
 
     // Listen for match mode changes
     window.addEventListener('match-mode-changed', (event: Event) => {

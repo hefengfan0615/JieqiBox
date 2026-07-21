@@ -100,6 +100,18 @@
         await configManager.clearLastSelectedEngineId()
       }
 
+      // On Android, extract bundled engine assets first
+      const { checkAndroidPlatform } = await import('./utils/platform')
+      if (checkAndroidPlatform()) {
+        try {
+          console.log('[DEBUG] App: Android detected, extracting bundled engine...')
+          await invoke('extract_bundled_engine')
+          console.log('[DEBUG] App: Bundled engine extraction completed')
+        } catch (e) {
+          console.warn('[DEBUG] App: Bundled engine extraction failed (may already exist):', e)
+        }
+      }
+
       // Initialize autosave after configuration is loaded
       await autosave.initializeAutosave(game)
     } catch (error) {

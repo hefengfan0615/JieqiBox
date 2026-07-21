@@ -28,14 +28,11 @@
 
       <v-card-actions>
         <v-btn
-          v-if="isAndroidPlatform"
           color="blue-darken-1"
-          @click="addEngineAndroid"
-          >{{ $t('engineManager.addEngineAndroid') }}</v-btn
+          @click="addEngineDesktop"
+          v-if="!isAndroidPlatform"
+          >{{ $t('engineManager.addEngine') }}</v-btn
         >
-        <v-btn v-else color="blue-darken-1" @click="addEngineDesktop">{{
-          $t('engineManager.addEngine')
-        }}</v-btn>
         <v-spacer></v-spacer>
         <v-btn color="grey-darken-1" @click="closeDialog">{{
           $t('common.close')

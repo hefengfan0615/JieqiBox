@@ -125,9 +125,7 @@ jobs:
           echo "Replaced index.ts with stub version"
 
           # Modify vite.config.ts to remove onnxruntime static copy
-          # First, remove the import line
           sed -i.bak '/import.*vite-plugin-static-copy/d' vite.config.ts
-          # Second, remove the plugin usage block
           sed -i.bak '/viteStaticCopy({/,/}),/d' vite.config.ts
           echo "Modified vite.config.ts to remove onnxruntime static copy"
 
@@ -158,15 +156,9 @@ jobs:
           tauriScript: 'npm run tauri'
 
   build-android:
-    name: Build Android
+    name: Build Android (no-yolo, with Pikafish engine + NNUE)
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - include_yolo: true
-          - include_yolo: false
     steps:
       - uses: actions/checkout@v4
 
@@ -187,7 +179,7 @@ jobs:
         with:
           api-level: 34
           ndk: 26.1.10909125
-          build-tools: '34.0.0'
+          build-tool: '34.0.0'
 
       - name: Export NDK environment variables
         run: |
@@ -200,40 +192,75 @@ jobs:
         with:
           targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
 
-      - name: Download model (best.onnx)
-        if: matrix.include_yolo
+      - name: Install 7z
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+
+      - name: Download NNUE net
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p public/models
-          curl -L --fail -o public/models/best.onnx \
-            https://github.com/Velithia/JieqiModels/releases/download/yolo-models/best.onnx
-          if [ ! -s public/models/best.onnx ]; then
-            echo "::error::best.onnx download failed or file is empty"
+          NNUE_URL="https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2024-08-31/Pikafish.2024-08-31.7z"
+          echo "Downloading NNUE from $NNUE_URL"
+          curl -L --fail -o pikafish.7z "$NNUE_URL"
+          if [ ! -s pikafish.7z ]; then
+            echo "::error::NNUE 7z download failed or file is empty"
             exit 1
           fi
-          echo "best.onnx downloaded to public/models"
+          echo "Extracting 7z archive..."
+          7z x pikafish.7z -oextracted_nnue -y
+          # Find the .nnue file
+          NNUE_FILE=$(find extracted_nnue -type f -name "*.nnue" | head -n 1)
+          if [ -z "$NNUE_FILE" ]; then
+            echo "::error::No .nnue file found in extracted archive"
+            find extracted_nnue -type f
+            exit 1
+          fi
+          echo "Found NNUE file: $NNUE_FILE"
+          mkdir -p engine_assets
+          cp "$NNUE_FILE" engine_assets/nnue.bin
+          echo "NNUE file copied to engine_assets/nnue.bin"
 
-      - name: Remove onnxruntime dependencies for no-yolo build
-        if: ${{ !matrix.include_yolo }}
+      - name: Compile Pikafish engine for Android ARM64
         shell: bash
         run: |
-          # Remove onnxruntime-web from package.json
+          set -euo pipefail
+          cd engine/src
+          # Add NDK toolchain to PATH
+          NDK_TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export PATH="$NDK_TOOLCHAIN:$PATH"
+          echo "NDK toolchain path: $NDK_TOOLCHAIN"
+          make clean
+          make -j build COMP=ndk ARCH=armv8 EXE=pikafish-armv8
+          strip pikafish-armv8
+          cp pikafish-armv8 ../../engine_assets/
+          echo "Pikafish engine compiled for Android ARM64"
+
+      - name: Test engine (initial position, depth 20)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd engine_assets
+          echo "=== Testing Pikafish engine: initial position, depth 20 ==="
+          echo -e "uci\nisready\nucinewgame\nposition startpos\ngo depth 20\nquit" | qemu-aarch64-static ./pikafish-armv8 2>&1 || true
+          echo "=== Engine test completed ==="
+
+      - name: Copy engine + NNUE to Tauri resources
+        run: |
+          mkdir -p src-tauri/engines
+          cp engine_assets/pikafish-armv8 src-tauri/engines/
+          cp engine_assets/nnue.bin src-tauri/engines/
+          echo "Engine and NNUE copied to Tauri resources"
+
+      - name: Remove onnxruntime dependencies for no-yolo build
+        shell: bash
+        run: |
           jq 'del(.dependencies."onnxruntime-web")' package.json > package.json.tmp && mv package.json.tmp package.json
           echo "Removed onnxruntime-web dependency from package.json"
-
-          # Remove the real implementation file to avoid TypeScript errors
           rm -f src/composables/image-recognition/useImageRecognition.real.ts
           echo "Removed useImageRecognition.real.ts file"
-
-          # Replace index.ts with stub version
           mv src/composables/image-recognition/index.ts.stub src/composables/image-recognition/index.ts
           echo "Replaced index.ts with stub version"
-
-          # Modify vite.config.ts to remove onnxruntime static copy
-          # First, remove the import line
           sed -i.bak '/import.*vite-plugin-static-copy/d' vite.config.ts
-          # Second, remove the plugin usage block
           sed -i.bak '/viteStaticCopy({/,/}),/d' vite.config.ts
           echo "Modified vite.config.ts to remove onnxruntime static copy"
 
@@ -243,6 +270,12 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Update productName for no-yolo build
+        shell: bash
+        run: |
+          jq '.productName = "jieqibox-no-yolo"' src-tauri/tauri.conf.json > tauri.conf.json.tmp && mv tauri.conf.json.tmp src-tauri/tauri.conf.json
+          echo "Updated productName to jieqibox-no-yolo in tauri.conf.json"
+
       - name: Init Tauri Android project
         run: npm install -g @tauri-apps/cli
 
@@ -250,7 +283,7 @@ jobs:
         run: npx tauri android build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_BUNDLE_IDENTIFIER_SUFFIX: ${{ !matrix.include_yolo && '-no-yolo' || '' }}
+          TAURI_BUNDLE_IDENTIFIER_SUFFIX: '-no-yolo'
 
       - name: Manually sign the APK
         id: sign_apk
@@ -285,53 +318,45 @@ jobs:
 
           echo "SIGNED_APK_PATH=$SIGNED_APK_PATH" >> "$GITHUB_ENV"
 
-      - name: Rename APK for no-yolo build
-        if: ${{ !matrix.include_yolo }}
+      - name: Rename APK with commit SHA prefix
         run: |
           SIGNED_APK_PATH="${{ env.SIGNED_APK_PATH }}"
-
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-6)
           DIRNAME=$(dirname "$SIGNED_APK_PATH")
-          BASENAME=$(basename "$SIGNED_APK_PATH" .apk)
-          NEW_PATH="${DIRNAME}/${BASENAME}-no-yolo.apk"
-
-          echo "Renaming APK from ${SIGNED_APK_PATH} to ${NEW_PATH}"
+          NEW_PATH="${DIRNAME}/jieqibox-${SHORT_SHA}-no-yolo.apk"
+          echo "Renaming APK to commit SHA prefix: ${SHORT_SHA}"
           mv "$SIGNED_APK_PATH" "$NEW_PATH"
+          echo "RENAMED_APK_PATH=$NEW_PATH" >> "$GITHUB_ENV"
 
-      - name: Upload Android artifacts
+      - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jieqibox-android${{ !matrix.include_yolo && '-no-yolo' || '' }}
+          name: jieqibox-android-no-yolo
           path: |
             src-tauri/gen/android/app/build/outputs/apk/**/release/*.apk
             !src-tauri/gen/android/app/build/outputs/apk/**/release/*-unsigned.apk
-          retention-days: 30
+          retention-day: 30
 
-  release:
-    name: Append Android Artifacts to Release
+  release-android:
+    name: Create Android Release
     runs-on: ubuntu-latest
-    needs: [publish-tauri, build-android]
+    needs: [build-android]
     permissions:
       contents: write
     steps:
-      - name: Download android artifacts (with YOLO)
-        uses: actions/download-artifact@v4
-        with:
-          name: jieqibox-android
-          path: jieqibox-android
-
-      - name: Download android artifacts (no YOLO)
+      - name: Download android artifacts
         uses: actions/download-artifact@v4
         with:
           name: jieqibox-android-no-yolo
           path: jieqibox-android-no-yolo
 
-      - name: Add Android assets to Release
+      - name: Create Release with commit SHA
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: 'Pikafish engine + NNUE bundled APK (no-yolo). Commit: ${{ github.sha }}'
           files: |
-            jieqibox-android/**/*.apk
-            jieqibox-android/**/*.aab
             jieqibox-android-no-yolo/**/*.apk
             jieqibox-android-no-yolo/**/*.aab
           draft: false

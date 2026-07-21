@@ -47,6 +47,7 @@
       >
       </v-btn>
       <v-btn
+        v-if="!isAndroidPlatform"
         @click="showEngineManager = true"
         color="blue-grey"
         size="x-small"
@@ -1072,6 +1073,7 @@
   import PvPreviewDialog from './PvPreviewDialog.vue'
   import { useScoreFormatter } from '@/composables/useScoreFormatter'
   import { marked } from 'marked'
+  import { isAndroidPlatform as checkAndroidPlatform } from '@/utils/platform'
   import DOMPurify from 'dompurify'
   import {
     START_FEN,
@@ -1177,6 +1179,7 @@
   /* ---------- Engine Management State ---------- */
   const configManager = useConfigManager()
   const showEngineManager = ref(false)
+  const isAndroidPlatform = computed(() => checkAndroidPlatform())
   const showHumanVsAiDialog = ref(false)
   const managedEngines = ref<ManagedEngine[]>([])
   const selectedEngineId = ref<string | null>(null)

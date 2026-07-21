@@ -833,6 +833,67 @@ async fn save_game_notation_with_dialog(content: String, default_filename: Strin
     }
 }
 
+/// Copy bundled engine assets from Tauri resources to internal storage on Android.
+/// This is called on first launch to set up the bundled Pikafish engine.
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn extract_bundled_engine(app: AppHandle) -> Result<(), String> {
+    let bundle_identifier = &app.config().identifier;
+    let engine_dir = format!("/data/data/{}/files/engines", bundle_identifier);
+    let engine_path_str = format!("{}/pikafish-armv8", engine_dir);
+    let nnue_path_str = format!("{}/nnue.bin", engine_dir);
+
+    let engine_path = Path::new(&engine_path_str);
+    let nnue_path = Path::new(&nnue_path_str);
+
+    if engine_path.exists() && nnue_path.exists() {
+        let _ = app.emit("engine-output", "[DEBUG] Bundled engine already exists, skipping extraction");
+        return Ok(());
+    }
+
+    // Ensure the engine directory exists
+    if let Err(e) = fs::create_dir_all(&engine_dir) {
+        return Err(format!("Failed to create engine directory: {}", e));
+    }
+
+    // Get the resource directory where bundled files are
+    let resource_dir = app.path().resource_dir()
+        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+    let bundled_engine = resource_dir.join("engines/pikafish-armv8");
+    let bundled_nnue = resource_dir.join("engines/nnue.bin");
+
+    let _ = app.emit("engine-output", format!("[DEBUG] Extracting bundled engine from {} to {}", bundled_engine.display(), engine_path.display()));
+
+    // Copy the engine binary
+    if let Err(e) = fs::copy(&bundled_engine, &engine_path) {
+        return Err(format!("Failed to copy bundled engine: {}", e));
+    }
+
+    // Set executable permission
+    let mut perms = fs::metadata(&engine_path).map_err(|e| e.to_string())?.permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&engine_path, perms).map_err(|e| e.to_string())?;
+
+    // Copy the NNUE file
+    if let Err(e) = fs::copy(&bundled_nnue, &nnue_path) {
+        return Err(format!("Failed to copy bundled NNUE: {}", e));
+    }
+
+    let _ = app.emit("engine-output", format!("[DEBUG] Bundled engine extracted successfully to {}", engine_dir));
+
+    // Auto-register the engine in config
+    let engine_data = serde_json::json!({
+        "id": "bundled_pikafish",
+        "name": "Pikafish (Bundled)",
+        "path": engine_path_str,
+        "args": ""
+    });
+
+    app.emit("android-engine-added", engine_data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// Copy text to clipboard
 #[tauri::command]
 async fn copy_to_clipboard(text: String, _app: AppHandle) -> Result<(), String> {
@@ -897,7 +958,9 @@ pub fn run() {
             #[cfg(target_os = "android")]
             handle_saf_file_result,
             #[cfg(target_os = "android")]
-            handle_nnue_file_result
+            handle_nnue_file_result,
+            #[cfg(target_os = "android")]
+            extract_bundled_engine
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
