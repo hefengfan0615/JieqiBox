@@ -119,7 +119,6 @@
           }
 
           // Auto-load the engine
-          const { ManagedEngine } = await import('./composables/useConfigManager')
           const engToLoad = engines.find((e: any) => e.id === engineData.id)
           if (engToLoad) {
             await engine.loadEngine(engToLoad)
