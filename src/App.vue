@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { provide, computed, watch, onMounted, onUnmounted } from 'vue'
+  import { invoke } from '@tauri-apps/api/core'
   import { useI18n } from 'vue-i18n'
   import { useTheme } from 'vuetify'
   import TopToolbar from './components/TopToolbar.vue'
@@ -101,8 +102,8 @@
       }
 
       // On Android, extract bundled engine assets first
-      const { checkAndroidPlatform } = await import('./utils/platform')
-      if (checkAndroidPlatform()) {
+      const { isAndroidPlatform } = await import('./utils/platform')
+      if (isAndroidPlatform()) {
         try {
           console.log('[DEBUG] App: Android detected, extracting bundled engine...')
           await invoke('extract_bundled_engine')

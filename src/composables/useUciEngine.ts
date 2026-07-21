@@ -1179,8 +1179,8 @@ export function useUciEngine(generateFen: () => string, gameState: any) {
           path,
           args: '',
         }
-        configManager.addEngine(newEngine)
-        await configManager.saveConfig()
+        existingEngines.push(newEngine)
+        await configManager.saveEngines(existingEngines)
         console.log('[DEBUG] useUciEngine: Added bundled engine to config:', newEngine)
       }
 
