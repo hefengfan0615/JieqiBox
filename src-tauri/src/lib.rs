@@ -4,7 +4,7 @@
 
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use std::sync::{Arc, Mutex};
 use tauri::async_runtime;
 use std::process::Command;
