@@ -142,12 +142,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_BUNDLE_IDENTIFIER_SUFFIX: '-no-yolo'
 
-      - name: Manually sign the APK
+      - name: Auto sign the APK
         id: sign_apk
         run: |
+          # Auto-generate keystore
           KEYSTORE_PATH=$RUNNER_TEMP/keystore.jks
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > $KEYSTORE_PATH
-          echo "Keystore file created at $KEYSTORE_PATH"
+          STORE_PASS="android"
+          KEY_ALIAS="jieqibox"
+          KEY_PASS="android"
+
+          keytool -genkey -v \
+            -keystore "$KEYSTORE_PATH" \
+            -alias "$KEY_ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+            -dname "CN=JieqiBox, OU=Dev, O=JieqiBox, L=Unknown, ST=Unknown, C=CN"
+
+          echo "Keystore generated at $KEYSTORE_PATH"
 
           UNSIGNED_APK_PATH=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name "*-unsigned.apk" | head -n 1)
           if [ -z "$UNSIGNED_APK_PATH" ]; then
@@ -161,10 +172,10 @@ jobs:
           echo "Signed APK will be saved to: $SIGNED_APK_PATH"
 
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-            --ks $KEYSTORE_PATH \
-            --ks-key-alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
-            --ks-pass pass:"${{ secrets.ANDROID_KEY_PASSWORD }}" \
-            --key-pass pass:"${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass pass:"$STORE_PASS" \
+            --key-pass pass:"$KEY_PASS" \
             --out "$SIGNED_APK_PATH" \
             "$UNSIGNED_APK_PATH"
 
