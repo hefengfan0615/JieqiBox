@@ -87,7 +87,7 @@ jobs:
           echo "NDK toolchain path: $NDK_TOOLCHAIN"
           make clean
           make -j build COMP=ndk ARCH=armv8 EXE=pikafish-armv8
-          strip pikafish-armv8
+          aarch64-linux-android-strip pikafish-armv8
           cp pikafish-armv8 ../../engine_assets/
           echo "Pikafish engine compiled for Android ARM64"
 
