@@ -175,7 +175,8 @@ namespace {
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
     int r = Reductions[d] * Reductions[mn];
-    return (r + redu_1 - int(delta) * 1024 / int(rootDelta)) / 1024 + (!i && r > redu_2);
+    int divisor = lmrDivisor[std::min(d, 15)];
+    return (r + redu_1 - int(delta) * 1024 / int(rootDelta)) / divisor + (!i && r > redu_2);
   }
 
   int futility_move_count(bool improving, Depth depth) {
@@ -864,7 +865,7 @@ namespace {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth, eval and complexity of position
-        Depth R = std::min(int(eval - beta) / Numov_5, 0) + depth / 3 + 4 - (complexity > Numov_9);
+        Depth R = std::min(int(eval - beta) / Numov_5, 5) + depth / 3 + 4 - (complexity > Numov_9);
 
         ss->currentMove = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
