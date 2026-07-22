@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "jieqibox",
+  "productName": "fengfanjieqi",
   "version": "0.7.2",
   "identifier": "com.jieqibox.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "JieqiBox",
+        "title": "丰帆揭棋",
         "width": 800,
         "height": 600
       }

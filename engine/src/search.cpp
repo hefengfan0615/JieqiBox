@@ -1003,8 +1003,8 @@ namespace {
     if (    PvNode
         && !ttMove)
         depth -= decr_0;
-        
-	if (    PvNode
+
+    if (    PvNode
         &&  depth > 1
         &&  ttMove)
         depth -= std::clamp((depth - tte->depth()) / decr_1, 0, decr_2);
@@ -1194,7 +1194,10 @@ moves_loop: // When in check, search starts here
               if (!pos.see_ge(move, Value(-Futi_par_4 * lmrDepth * lmrDepth - Futi_par_5 * lmrDepth)))
               {
                   if (history > 0 && quietCount < 64)
-                      quietsSearched[quietCount++] = move;                  continue;
+                  {
+                      quietsSearched[quietCount++] = move;
+                  }
+                  continue;
               }
           }
       }
@@ -1295,17 +1298,14 @@ moves_loop: // When in check, search starts here
       int darkTryTimes = 0;
       bool fromWhile = false;
       StateInfo darkSt;
-      std::string fen3, mvStr = UCI::move(move);
       int tryTypeTimes = 0, typecount = 0;
       ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
       bool isDarkDepth = false;
 #if SEARCHDEBUG
+      std::string fen3;
       fen3 = pos.fen();
       std::string DarkSearchInfo = "";
 #endif
-      if (mvStr == "g4g9") {
-          int a = 0;
-      }
       if (pos.do_move(move, st, givesCheck)) {
           SC.setUs(pos.isFirstSide());
           while (pos.getDark(darkSt, typecount, isDarkDepth))

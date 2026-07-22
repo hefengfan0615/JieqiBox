@@ -130,8 +130,8 @@ jobs:
       - name: Update productName for no-yolo build
         shell: bash
         run: |
-          jq '.productName = "jieqibox-no-yolo"' src-tauri/tauri.conf.json > tauri.conf.json.tmp && mv tauri.conf.json.tmp src-tauri/tauri.conf.json
-          echo "Updated productName to jieqibox-no-yolo in tauri.conf.json"
+          jq '.productName = "fengfanjieqi-no-yolo"' src-tauri/tauri.conf.json > tauri.conf.json.tmp && mv tauri.conf.json.tmp src-tauri/tauri.conf.json
+          echo "Updated productName to fengfanjieqi-no-yolo in tauri.conf.json"
 
       - name: Init Tauri Android project
         run: npm install -g @tauri-apps/cli
@@ -148,7 +148,7 @@ jobs:
           # Auto-generate keystore
           KEYSTORE_PATH=$RUNNER_TEMP/keystore.jks
           STORE_PASS="android"
-          KEY_ALIAS="jieqibox"
+          KEY_ALIAS="fengfanjieqi"
           KEY_PASS="android"
 
           keytool -genkey -v \
@@ -156,7 +156,7 @@ jobs:
             -alias "$KEY_ALIAS" \
             -keyalg RSA -keysize 2048 -validity 365000 \
             -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
-            -dname "CN=JieqiBox, OU=Dev, O=JieqiBox, L=Unknown, ST=Unknown, C=CN"
+            -dname "CN=丰帆揭棋, OU=Dev, O=丰帆揭棋, L=Unknown, ST=Unknown, C=CN"
 
           echo "Keystore generated at $KEYSTORE_PATH"
 
@@ -191,7 +191,7 @@ jobs:
           SIGNED_APK_PATH="${{ env.SIGNED_APK_PATH }}"
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-6)
           DIRNAME=$(dirname "$SIGNED_APK_PATH")
-          NEW_PATH="${DIRNAME}/jieqibox-${SHORT_SHA}-no-yolo.apk"
+          NEW_PATH="${DIRNAME}/fengfanjieqi-${SHORT_SHA}-no-yolo.apk"
           echo "Renaming APK to commit SHA prefix: ${SHORT_SHA}"
           mv "$SIGNED_APK_PATH" "$NEW_PATH"
           echo "RENAMED_APK_PATH=$NEW_PATH" >> "$GITHUB_ENV"
@@ -199,7 +199,7 @@ jobs:
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jieqibox-android-no-yolo
+          name: fengfanjieqi-android-no-yolo
           path: |
             src-tauri/gen/android/app/build/outputs/apk/**/release/*.apk
             !src-tauri/gen/android/app/build/outputs/apk/**/release/*-unsigned.apk
@@ -215,8 +215,8 @@ jobs:
       - name: Download android artifacts
         uses: actions/download-artifact@v4
         with:
-          name: jieqibox-android-no-yolo
-          path: jieqibox-android-no-yolo
+          name: fengfanjieqi-android-no-yolo
+          path: fengfanjieqi-android-no-yolo
 
       - name: Create Release with commit SHA
         uses: softprops/action-gh-release@v2
@@ -225,8 +225,8 @@ jobs:
           name: ${{ github.ref_name }}
           body: 'Pikafish engine + NNUE bundled APK (no-yolo). Commit: ${{ github.sha }}'
           files: |
-            jieqibox-android-no-yolo/**/*.apk
-            jieqibox-android-no-yolo/**/*.aab
+            fengfanjieqi-android-no-yolo/**/*.apk
+            fengfanjieqi-android-no-yolo/**/*.aab
           draft: false
           prerelease: false
         env:

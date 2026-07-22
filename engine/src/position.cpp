@@ -37,7 +37,7 @@ namespace Stockfish {
 namespace Zobrist {
 
   Key psq[PIECE_NB][SQUARE_NB];
-  Key psqDark[PIECE_NB][5];
+  Key psqDark[PIECE_NB][7];
   Key side;
 }
 
@@ -140,13 +140,17 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
       incremented after Black's move.
 */
 
-  unsigned char token,lastToken;
+  unsigned char token;
+  [[maybe_unused]] unsigned char lastToken;
   size_t idx;
   Square sq = SQ_A9;
   std::istringstream ss(fenStr);
 
+  #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
   std::memset(this, 0, sizeof(Position));
   std::memset(si, 0, sizeof(StateInfo));
+#pragma GCC diagnostic pop
   st = si;
 
   ss >> std::noskipws;
@@ -345,14 +349,14 @@ string Position::fen() const {
 
   int DarkNum[PIECE_NB];
   memset(DarkNum, 0, sizeof(DarkNum));
-  for (int i = 0; i < restPieces[WHITE].size(); i++) {
+  for (std::size_t i = 0; i < restPieces[WHITE].size(); i++) {
       Piece p = restPieces[WHITE].at(i);
       if (p != NO_PIECE)
       {
           DarkNum[p]++;
       }
   }
-  for (int i = 0; i < restPieces[BLACK].size(); i++) {
+  for (std::size_t i = 0; i < restPieces[BLACK].size(); i++) {
       Piece p = restPieces[BLACK].at(i);
       if (p != NO_PIECE)
       {
@@ -550,7 +554,6 @@ bool Position::getDark(StateInfo& newSt, int& typecount, bool& isDarkDepth) {
     Color us = ~sideToMove;
     Piece pc = NO_PIECE;
     typecount = 0;
-    Value darkV = Value(restPieces[us].evgValue());
     isDarkDepth = st->darkDepth > MAXDARKDEPTH || st->darkTypes > MAXDARKTYPES;
     if (st->darkDepth - MAXDARKDEPTH > QDARKDEPTH)return false;
     while (st->darkTypeIndex < BISHOP)
@@ -1226,7 +1229,10 @@ bool Position::is_repeated(Value& result, int ply) const {
 
             // Copy the current position to a rollback struct, so we don't need to do those moves again
             Position rollback;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
             memcpy((void *)&rollback, (const void *)this, offsetof(Position, filter));
+#pragma GCC diagnostic pop
 
             // Set up chase information
             rollback.set_chase_info(i);
