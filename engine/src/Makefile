@@ -856,6 +856,9 @@ default:
 
 all: $(EXE) .depend
 
+net:
+	@$(SHELL) ../scripts/net.sh || echo "NNUE net download skipped (file may already exist or be provided separately)"
+
 config-sanity: net
 	@echo ""
 	@echo "Config:"
