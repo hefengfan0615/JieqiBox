@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -16,22 +16,38 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Class for difference calculation of NNUE evaluation function
+// Class for the accumulator of NNUE evaluation function
 
 #ifndef NNUE_ACCUMULATOR_H_INCLUDED
 #define NNUE_ACCUMULATOR_H_INCLUDED
 
+#include <cstdint>
+#include <cstring>
+
 #include "nnue_architecture.h"
+#include "nnue_common.h"
 
 namespace Stockfish::Eval::NNUE {
 
-  // Class that holds the result of affine transformation of input features
-  struct alignas(CacheLineSize) Accumulator {
-    std::int16_t accumulation[2][TransformedFeatureDimensions];
-    std::int32_t psqtAccumulation[2][PSQTBuckets];
-    bool computed[2];
-  };
+// Class that holds the result of affine transformation of input features
+struct Accumulator {
+
+    friend class FeatureTransformer<TransformedFeatureDimensionsBig>;
+
+    // Number of output dimensions
+    static constexpr IndexType HalfDimensions = TransformedFeatureDimensionsBig;
+
+    // Accumulation for each perspective
+    alignas(CacheLineSize) BiasType accumulation[COLOR_NB][HalfDimensions];
+    alignas(CacheLineSize) PSQTWeightType psqtAccumulation[COLOR_NB][PSQTBuckets];
+    bool computed_accumulation;
+
+    Accumulator() : computed_accumulation(false) {
+        std::memset(accumulation, 0, sizeof(accumulation));
+        std::memset(psqtAccumulation, 0, sizeof(psqtAccumulation));
+    }
+};
 
 }  // namespace Stockfish::Eval::NNUE
 
-#endif // NNUE_ACCUMULATOR_H_INCLUDED
+#endif  // #ifndef NNUE_ACCUMULATOR_H_INCLUDED

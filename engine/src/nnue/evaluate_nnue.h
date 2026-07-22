@@ -1,59 +1,45 @@
 /*
-  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
-
-  Stockfish is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  Stockfish is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  Stockfish - NNUE evaluation function implementation
 */
-
-// header used in NNUE evaluation function
 
 #ifndef NNUE_EVALUATE_NNUE_H_INCLUDED
 #define NNUE_EVALUATE_NNUE_H_INCLUDED
 
-#include "nnue_feature_transformer.h"
+#include <string>
 
-#include <memory>
+#include "../types.h"
+
+namespace Stockfish {
+class Position;
+}
 
 namespace Stockfish::Eval::NNUE {
 
-  // Hash value of evaluation function structure
-  constexpr std::uint32_t HashValue =
-      FeatureTransformer::get_hash_value() ^ Network::get_hash_value();
+// Hash value of the evaluation function file
+constexpr std::uint32_t HashValue =
+  FeatureTransformer<TransformedFeatureDimensionsBig>::get_hash_value()
+  ^ NetworkArchitecture<TransformedFeatureDimensionsBig, L2Big, L3Big>::get_hash_value();
 
-  // Deleter for automating release of memory area
-  template <typename T>
-  struct AlignedDeleter {
-    void operator()(T* ptr) const {
-      ptr->~T();
-      std_aligned_free(ptr);
-    }
-  };
+constexpr int MAX_PSQT = 256 * (128 * 128);
 
-  template <typename T>
-  struct LargePageDeleter {
-    void operator()(T* ptr) const {
-      ptr->~T();
-      aligned_large_pages_free(ptr);
-    }
-  };
+// The default file name for the NNUE evaluation function
+constexpr const char* EvalFileDefaultName = "pikafish.nnue";
 
-  template <typename T>
-  using AlignedPtr = std::unique_ptr<T, AlignedDeleter<T>>;
+// the NNUE evaluation function
+Value evaluate(const Position& pos, int* complexity = nullptr);
 
-  template <typename T>
-  using LargePagePtr = std::unique_ptr<T, LargePageDeleter<T>>;
+// Load the NNUE evaluation function from a file
+bool load_eval_file(const std::string& evalFile, const std::string& downloadFileName);
+
+// Verify the NNUE evaluation function
+bool verify(const std::string& evalFile, const std::string& downloadFileName);
+
+// Initialize the NNUE evaluation function
+void init();
+
+// Save the NNUE evaluation function to a file
+void save_eval();
 
 }  // namespace Stockfish::Eval::NNUE
 
-#endif // #ifndef NNUE_EVALUATE_NNUE_H_INCLUDED
+#endif  // #ifndef NNUE_EVALUATE_NNUE_H_INCLUDED

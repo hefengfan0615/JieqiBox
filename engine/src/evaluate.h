@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 #define EVALUATE_H_INCLUDED
 
 #include <string>
-#include <optional>
 
 #include "types.h"
 
@@ -30,32 +29,30 @@ class Position;
 
 namespace Eval {
 
-  std::string trace(Position& pos);
-  Value evaluate(const Position& pos, int* complexity = nullptr);
+std::string trace(Position& pos);
+Value       evaluate(const Position& pos);
 
-  extern std::string currentEvalFileName;
+// The default net name MUST follow the format nn-[SHA256 first 12 digits].nnue
+// for the build process (profile-build and meson) to work.
+constexpr const char* EvalFileDefaultName = "pikafish.nnue";
 
-  // The default net name MUST follow the format nn-[SHA256 first 12 digits].nnue
-  // for the build process (profile-build and fishtest) to work. Do not change the
-  // name of the macro, as it is used in the Makefile.
-  #define EvalFileDefaultName   "pikafish.nnue"
+namespace NNUE {
 
-  namespace NNUE {
+// Hash value of the evaluation function file
+constexpr std::uint32_t HashValue =
+  FeatureTransformer<TransformedFeatureDimensionsBig>::get_hash_value()
+  ^ NetworkArchitecture<TransformedFeatureDimensionsBig, L2Big, L3Big>::get_hash_value();
 
-    std::string trace(Position& pos);
-    Value evaluate(const Position& pos, int* complexity = nullptr);
+void        init();
+void        verify();
+void        save_eval();
+std::string trace(Position& pos);
+Value       evaluate(const Position& pos, int* complexity = nullptr);
 
-    void init();
-    void verify();
+}  // namespace NNUE
 
-    bool load_eval(std::string name, std::istream& stream);
-    bool save_eval(std::ostream& stream);
-    bool save_eval(const std::optional<std::string>& filename);
+}  // namespace Eval
 
-  } // namespace NNUE
+}  // namespace Stockfish
 
-} // namespace Eval
-
-} // namespace Stockfish
-
-#endif // #ifndef EVALUATE_H_INCLUDED
+#endif  // #ifndef EVALUATE_H_INCLUDED
