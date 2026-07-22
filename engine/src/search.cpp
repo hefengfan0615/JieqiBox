@@ -1,13 +1,13 @@
 /*
-  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Pikafish, a UCI chess variant playing engine derived from Stockfish
+  Copyright (C) 2004-2026 The Pikafish developers (see AUTHORS file)
 
-  Stockfish is free software: you can redistribute it and/or modify
+  Pikafish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  Stockfish is distributed in the hope that it will be useful,
+  Pikafish is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
@@ -17,6 +17,7 @@
 */
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstring>   // For std::memset
@@ -167,6 +168,10 @@ namespace {
 
   // Reductions lookup table, initialized at startup
   int Reductions[MAX_MOVES]; // [depth or moveNumber]
+
+  // Pikafish-style LMR divisor table for better reduction scaling
+  static constexpr std::array<int, 16> lmrDivisor = {3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782,
+                                                      2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599};
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
     int r = Reductions[d] * Reductions[mn];
@@ -1849,7 +1854,7 @@ dark_undo:
       Value vTmp;
       int tryTypeTimes = 0, typecount = 0;
       ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-      bool isDarkDepth;
+      bool isDarkDepth = false;
       std::string cfen;
       if (pos.do_move(move, st, givesCheck)) {
           StateInfo darkSt;

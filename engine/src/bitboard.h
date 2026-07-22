@@ -1,13 +1,13 @@
 /*
-  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Pikafish, a UCI chess variant playing engine derived from Stockfish
+  Copyright (C) 2004-2026 The Pikafish developers (see AUTHORS file)
 
-  Stockfish is free software: you can redistribute it and/or modify
+  Pikafish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  Stockfish is distributed in the hope that it will be useful,
+  Pikafish is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
@@ -19,9 +19,14 @@
 #ifndef BITBOARD_H_INCLUDED
 #define BITBOARD_H_INCLUDED
 
+#include <algorithm>
+#include <array>
+#include <cassert>
 #include <string>
+#include <type_traits>
 
 #include "types.h"
+#include "misc.h"
 
 namespace Stockfish {
 
@@ -55,56 +60,28 @@ constexpr Bitboard Rank7BB = Rank0BB << (FILE_NB * 7);
 constexpr Bitboard Rank8BB = Rank0BB << (FILE_NB * 8);
 constexpr Bitboard Rank9BB = Rank0BB << (FILE_NB * 9);
 
-
 constexpr Bitboard PawnFileBB = FileABB | FileCBB | FileEBB | FileGBB | FileIBB;
 constexpr Bitboard HalfBB[2] = { Rank0BB | Rank1BB | Rank2BB | Rank3BB | Rank4BB,
                                  Rank5BB | Rank6BB | Rank7BB | Rank8BB | Rank9BB };
 constexpr Bitboard PawnBB[2] = { HalfBB[BLACK] | ((Rank3BB | Rank4BB) & PawnFileBB),
                                  HalfBB[WHITE] | ((Rank6BB | Rank5BB) & PawnFileBB) };
 
-extern uint8_t PopCnt16[1 << 16];
-extern uint8_t SquareDistance[SQUARE_NB][SQUARE_NB];
+extern std::array<std::array<uint8_t, SQUARE_NB>, SQUARE_NB> SquareDistance;
 
-extern Bitboard SquareBB[SQUARE_NB];
-extern Bitboard BetweenBB[SQUARE_NB][SQUARE_NB];
-extern Bitboard LineBB[SQUARE_NB][SQUARE_NB];
-extern Bitboard PseudoAttacks[PIECE_TYPE_NB][SQUARE_NB];
-extern Bitboard PawnAttacks[COLOR_NB][SQUARE_NB];
-extern Bitboard PawnAttacksTo[COLOR_NB][SQUARE_NB];
-
-int popcount(Bitboard b); // required for 128 bit pext
-
-/// Magic holds all magic bitboards relevant data for a single square
-struct Magic {
-  Bitboard  mask;
-  Bitboard  magic;
-  Bitboard* attacks;
-  unsigned  shift;
-
-  // Compute the attack's index using the 'magic bitboards' approach
-  unsigned index(Bitboard occupied) const {
-
-    if (HasPext)
-        return unsigned(pext(occupied, mask, shift));
-
-    return unsigned(((occupied & mask) * magic) >> shift);
-  }
-};
-
-extern Magic RookMagics[SQUARE_NB];
-extern Magic CannonMagics[SQUARE_NB];
-extern Magic BishopMagics[SQUARE_NB];
-extern Magic KnightMagics[SQUARE_NB];
-extern Magic KnightToMagics[SQUARE_NB];
+extern std::array<Bitboard, SQUARE_NB> SquareBB;
+extern std::array<std::array<Bitboard, SQUARE_NB>, SQUARE_NB> BetweenBB;
+extern std::array<std::array<Bitboard, SQUARE_NB>, SQUARE_NB> LineBB;
+extern std::array<std::array<Bitboard, SQUARE_NB>, PIECE_TYPE_NB> PseudoAttacks;
+extern std::array<std::array<Bitboard, SQUARE_NB>, COLOR_NB> PawnAttacks;
+extern std::array<std::array<Bitboard, SQUARE_NB>, COLOR_NB> PawnAttacksTo;
 
 inline Bitboard square_bb(Square s) {
   assert(is_ok(s));
   return SquareBB[s];
 }
 
-
-/// Overloads of bitwise operators between a Bitboard and a Square for testing
-/// whether a given bit is set in a bitboard, and for setting and clearing bits.
+// Overloads of bitwise operators between a Bitboard and a Square for testing
+// whether a given bit is set in a bitboard, and for setting and clearing bits.
 
 inline Bitboard  operator&( Bitboard  b, Square s) { return b &  square_bb(s); }
 inline Bitboard  operator|( Bitboard  b, Square s) { return b |  square_bb(s); }
@@ -119,7 +96,7 @@ inline Bitboard  operator^(Square s, Bitboard b) { return b ^ s; }
 inline Bitboard  operator|(Square s1, Square s2) { return square_bb(s1) | s2; }
 
 constexpr bool more_than_one(Bitboard b) {
-  return b & (b - 1);
+  return bool(b & (b - 1));
 }
 
 
@@ -154,6 +131,20 @@ constexpr Bitboard shift(Bitboard b) {
         : D == SOUTH_EAST ? (b & ~FileIBB           ) >> NORTH_WEST  : D == SOUTH_WEST ? (b & ~FileABB) >> NORTH_EAST
         : Bitboard(0);
 }
+
+
+/// distance() functions return the distance between x and y, defined as the
+/// number of steps for a king in x to reach y.
+
+constexpr auto abs = [](int x) { return x > 0 ? x : -x; };
+
+template<typename T1 = Square> inline int distance(Square x, Square y);
+template<> inline int distance<File>(Square x, Square y) { return abs(file_of(x) - file_of(y)); }
+template<> inline int distance<Rank>(Square x, Square y) { return abs(rank_of(x) - rank_of(y)); }
+template<> inline int distance<Square>(Square x, Square y) { return SquareDistance[x][y]; }
+
+inline int edge_distance(File f) { return std::min(f, File(FILE_I - f)); }
+inline int edge_distance(Rank r) { return std::min(r, Rank(RANK_9 - r)); }
 
 
 /// pawn_attacks_bb() returns the squares attacked by pawns of the given color
@@ -231,16 +222,28 @@ inline bool aligned(Square s1, Square s2, Square s3) {
 }
 
 
-/// distance() functions return the distance between x and y, defined as the
-/// number of steps for a king in x to reach y.
+/// Magic holds all magic bitboards relevant data for a single square
+struct Magic {
+  Bitboard  mask;
+  Bitboard  magic;
+  Bitboard* attacks;
+  unsigned  shift;
 
-template<typename T1 = Square> inline int distance(Square x, Square y);
-template<> inline int distance<File>(Square x, Square y) { return std::abs(file_of(x) - file_of(y)); }
-template<> inline int distance<Rank>(Square x, Square y) { return std::abs(rank_of(x) - rank_of(y)); }
-template<> inline int distance<Square>(Square x, Square y) { return SquareDistance[x][y]; }
+  // Compute the attack's index using the 'magic bitboards' approach
+  unsigned index(Bitboard occupied) const {
 
-inline int edge_distance(File f) { return std::min(f, File(FILE_I - f)); }
-inline int edge_distance(Rank r) { return std::min(r, Rank(RANK_9 - r)); }
+    if (HasPext)
+        return unsigned(pext(occupied, mask, shift));
+
+    return unsigned(((occupied & mask) * magic) >> shift);
+  }
+};
+
+extern Magic RookMagics[SQUARE_NB];
+extern Magic CannonMagics[SQUARE_NB];
+extern Magic BishopMagics[SQUARE_NB];
+extern Magic KnightMagics[SQUARE_NB];
+extern Magic KnightToMagics[SQUARE_NB];
 
 
 /// attacks_bb(Square) returns the pseudo attacks of the give piece type
@@ -263,7 +266,7 @@ template<PieceType Pt>
 inline Bitboard attacks_bb(Square s, Bitboard occupied) {
 
   assert((Pt != PAWN) && (is_ok(s)));
-  // TODO: 暗士
+
   switch (Pt)
   {
   case ROOK     : return     RookMagics[s].attacks[    RookMagics[s].index(occupied)];
@@ -271,7 +274,7 @@ inline Bitboard attacks_bb(Square s, Bitboard occupied) {
   case BISHOP   : return   BishopMagics[s].attacks[  BishopMagics[s].index(occupied)];
   case KNIGHT   : return   KnightMagics[s].attacks[  KnightMagics[s].index(occupied)];
   case KNIGHT_TO: return KnightToMagics[s].attacks[KnightToMagics[s].index(occupied)];
-  default       : return PseudoAttacks[Pt][s];
+  default       : return attacks_bb<Pt>(s);
   }
 }
 
@@ -279,7 +282,6 @@ inline Bitboard attacks_bb(PieceType pt, Square s, Bitboard occupied) {
 
   assert((pt != PAWN) && (is_ok(s)));
 
-  // TODO: 暗士
   switch (pt)
   {
   case ROOK  : return attacks_bb<  ROOK>(s, occupied);
@@ -297,13 +299,14 @@ inline int popcount(Bitboard b) {
 
 #ifndef USE_POPCNT
 
+  extern uint8_t PopCnt16[1 << 16];
   union { Bitboard bb; uint16_t u[8]; } v = { b };
   return  PopCnt16[v.u[0]] + PopCnt16[v.u[1]] + PopCnt16[v.u[2]] + PopCnt16[v.u[3]]
          + PopCnt16[v.u[4]] + PopCnt16[v.u[5]] + PopCnt16[v.u[6]] + PopCnt16[v.u[7]];
 
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
 
-    return (int)_mm_popcnt_u64(b >> 64) + (int)_mm_popcnt_u64(b);
+    return int(_mm_popcnt_u64(b >> 64)) + int(_mm_popcnt_u64(b));
 
 #else // Assumed gcc or compatible compiler
 
@@ -323,12 +326,12 @@ inline Square lsb(Bitboard b) {
   unsigned long idx;
   if (uint64_t(b))
   {
-      _BitScanForward64(&idx, b);
+      _BitScanForward64(&idx, uint64_t(b));
       return Square(idx);
   }
   else
   {
-      _BitScanForward64(&idx, b >> 64);
+      _BitScanForward64(&idx, uint64_t(b >> 64));
       return Square(idx + 64);
   }
 
@@ -338,6 +341,18 @@ inline Square lsb(Bitboard b) {
         return Square(__builtin_ctzll(b));
     return Square(__builtin_ctzll(b >> 64) + 64);
 
+#endif
+}
+
+/// msb() returns the most significant bit in a 64-bit integer
+inline int msb(uint64_t b) {
+    assert(b);
+#if defined(_MSC_VER)
+    unsigned long idx;
+    _BitScanReverse64(&idx, b);
+    return int(idx);
+#else
+    return 63 ^ __builtin_clzll(b);
 #endif
 }
 

@@ -1,13 +1,13 @@
 ﻿/*
-  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Pikafish, a UCI chess variant playing engine derived from Stockfish
+  Copyright (C) 2004-2026 The Pikafish developers (see AUTHORS file)
 
-  Stockfish is free software: you can redistribute it and/or modify
+  Pikafish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  Stockfish is distributed in the hope that it will be useful,
+  Pikafish is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
@@ -16,26 +16,24 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <algorithm>
-#include <bitset>
-
 #include "bitboard.h"
 #include "misc.h"
 #include "magics.h"
+
+#include <bitset>
 #include <set>
-#include <iostream>
 
 namespace Stockfish {
 
 uint8_t PopCnt16[1 << 16];
-uint8_t SquareDistance[SQUARE_NB][SQUARE_NB];
 
-Bitboard SquareBB[SQUARE_NB];
-Bitboard LineBB[SQUARE_NB][SQUARE_NB];
-Bitboard BetweenBB[SQUARE_NB][SQUARE_NB];
-Bitboard PseudoAttacks[PIECE_TYPE_NB][SQUARE_NB];
-Bitboard PawnAttacks[COLOR_NB][SQUARE_NB];
-Bitboard PawnAttacksTo[COLOR_NB][SQUARE_NB];
+std::array<std::array<uint8_t, SQUARE_NB>, SQUARE_NB> SquareDistance;
+std::array<Bitboard, SQUARE_NB> SquareBB;
+std::array<std::array<Bitboard, SQUARE_NB>, SQUARE_NB> BetweenBB;
+std::array<std::array<Bitboard, SQUARE_NB>, SQUARE_NB> LineBB;
+std::array<std::array<Bitboard, SQUARE_NB>, PIECE_TYPE_NB> PseudoAttacks;
+std::array<std::array<Bitboard, SQUARE_NB>, COLOR_NB> PawnAttacks;
+std::array<std::array<Bitboard, SQUARE_NB>, COLOR_NB> PawnAttacksTo;
 
 Magic RookMagics[SQUARE_NB];
 Magic CannonMagics[SQUARE_NB];
@@ -114,7 +112,8 @@ void Bitboards::init() {
 
   for (Square s1 = SQ_A0; s1 <= SQ_I9; ++s1)
       for (Square s2 = SQ_A0; s2 <= SQ_I9; ++s2)
-          SquareDistance[s1][s2] = std::max(distance<File>(s1, s2), distance<Rank>(s1, s2));
+          SquareDistance[s1][s2] = uint8_t(std::max(distance<File>(s1, s2), distance<Rank>(s1, s2)));
+
   //init_magics<   BISHOP>(BishopTable, BishopMagics);
 
   init_magics<     ROOK>(    RookTable,     RookMagics,     RookMagicsInit);

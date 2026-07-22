@@ -1,13 +1,13 @@
 /*
-  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Pikafish, a UCI chess variant playing engine derived from Stockfish
+  Copyright (C) 2004-2026 The Pikafish developers (see AUTHORS file)
 
-  Stockfish is free software: you can redistribute it and/or modify
+  Pikafish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  Stockfish is distributed in the hope that it will be useful,
+  Pikafish is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
@@ -17,6 +17,7 @@
 */
 
 #include <cassert>
+#include <limits>
 
 #include "bitboard.h"
 #include "movepick.h"
@@ -25,7 +26,7 @@ namespace Stockfish {
 
 namespace {
 
-  enum Stages {
+  enum Stages : uint16_t {
     MAIN_TT, CAPTURE_INIT, GOOD_CAPTURE, REFUTATION, QUIET_INIT, QUIET, BAD_CAPTURE,
     EVASION_TT, EVASION_INIT, EVASION,
     PROBCUT_TT, PROBCUT_INIT, PROBCUT,
@@ -123,35 +124,37 @@ void MovePicker::score() {
   }
 
   for (auto& m : *this) {
-      // Type of moved piece
-      PieceType pt = type_of(pos.moved_piece(m));
+      // Cache the moved piece and moved piece type to avoid repeated lookups
+      Piece movedPiece      = pos.moved_piece(m);
+      PieceType movedPt     = type_of(movedPiece);
+      Square toSq           = to_sq(m);
 
       if constexpr (Type == CAPTURES)
-          m.value =  6 * int(pos.value_on(to_sq(m)))
-                   +     (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))];
+          m.value =  6 * int(pos.value_on(toSq))
+                   +     (*captureHistory)[movedPiece][toSq][type_of(pos.piece_on(toSq))];
 
       else if constexpr (Type == QUIETS)
           m.value =  2 * (*mainHistory)[pos.side_to_move()][from_to(m)]
-                   + 2 * (*continuationHistory[0])[pos.moved_piece(m)][to_sq(m)]
-                   +     (*continuationHistory[1])[pos.moved_piece(m)][to_sq(m)]
-                   +     (*continuationHistory[3])[pos.moved_piece(m)][to_sq(m)]
-                   +     (*continuationHistory[5])[pos.moved_piece(m)][to_sq(m)]
+                   + 2 * (*continuationHistory[0])[movedPiece][toSq]
+                   +     (*continuationHistory[1])[movedPiece][toSq]
+                   +     (*continuationHistory[3])[movedPiece][toSq]
+                   +     (*continuationHistory[5])[movedPiece][toSq]
                    +     (threatened & from_sq(m) ?
-                            (pt == ROOK                    && !(to_sq(m) & threatenedByMinor)    ? 50000
-                          : (pt == KNIGHT || pt == CANNON) && !(to_sq(m) & threatenedByDefender) ? 25000
-                          :                                   !(to_sq(m) & threatenedByPawn)     ? 15000
+                            (movedPt == ROOK                    && !(toSq & threatenedByMinor)    ? 50000
+                          : (movedPt == KNIGHT || movedPt == CANNON) && !(toSq & threatenedByDefender) ? 25000
+                          :                                     !(toSq & threatenedByPawn)     ? 15000
                           :                                                                        0)
                           :                                                                        0)
-                   +     bool(pos.check_squares(type_of(pos.moved_piece(m))) & to_sq(m)) * 16384;
+                   +     bool(pos.check_squares(movedPt) & toSq) * 16384;
       else // Type == EVASIONS
       {
           if (pos.capture(m))
-              m.value =  pos.value_on(to_sq(m))
-                       - Value(pt)
+              m.value =  pos.value_on(toSq)
+                       - Value(movedPt)
                        + (1 << 28);
           else
               m.value =  (*mainHistory)[pos.side_to_move()][from_to(m)]
-                       + (*continuationHistory[0])[pos.moved_piece(m)][to_sq(m)];
+                       + (*continuationHistory[0])[movedPiece][toSq];
       }
   }
 }
