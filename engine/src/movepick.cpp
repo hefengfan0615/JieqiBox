@@ -136,7 +136,7 @@ void MovePicker::score() {
       else if constexpr (Type == QUIETS)
           m.value =  2 * (*mainHistory)[pos.side_to_move()][from_to(m)]
                    + 2 * (*continuationHistory[0])[movedPiece][toSq]
-                   + 2 * (*continuationHistory[1])[movedPiece][toSq]
+                   +     (*continuationHistory[1])[movedPiece][toSq]
                    +     (*continuationHistory[3])[movedPiece][toSq]
                    +     (*continuationHistory[5])[movedPiece][toSq]
                    +     (threatened & from_sq(m) ?
