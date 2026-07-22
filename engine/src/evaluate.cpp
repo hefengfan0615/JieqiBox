@@ -218,11 +218,8 @@ namespace {
   template<Tracing T> template<Color Us>
   void Evaluation<T>::initialize() {
 
-    constexpr Color     Them = ~Us;
     const Square ksq = pos.square<KING>(Us);
-    constexpr Bitboard LowRanks = (Us == WHITE ? Rank0BB | Rank1BB : Rank8BB | Rank9BB); 
 
-   
     // Initialize attackedBy[] for king and pawns
     attackedBy[Us][KING] = attacks_bb<KING>(ksq);
     attackedBy[Us][PAWN] = pawn_attacks_bb<Us>(pos.pieces(Us, PAWN));
@@ -244,9 +241,6 @@ namespace {
         DarkPieces[WHITE][ALL_PIECES] |= DarkPieces[WHITE][i];
         DarkPieces[BLACK][ALL_PIECES] |= DarkPieces[BLACK][i];
     }
-    // Find our pawns that are on the first two ranks
-    Bitboard b0 = pos.pieces(Us, PAWN) & LowRanks;
-
   }
 
 
@@ -599,22 +593,20 @@ std::string Eval::trace(Position& pos) {
       {
           Square sq = make_square(f, r);
           Piece pc = pos.piece_on(sq);
-          Value v = VALUE_NONE;
+          Value vSq = VALUE_NONE;
 
           if (pc != NO_PIECE && type_of(pc) != KING)
           {
-              auto st = pos.state();
-
               pos.remove_piece(sq);
               Score score = pos.psq_score();
               Value eval = (mg_value(score) * (pos.count<ALL_PIECES>() * 1000 / 32) + eg_value(score) * (1000 - pos.count<ALL_PIECES>() * 1000 / 32)) / 1000;
               eval = pos.side_to_move() == WHITE ? eval : -eval;
-              v = base - eval;
+              vSq = base - eval;
 
               pos.put_piece(pc, sq);
           }
 
-          writeSquare(f, r, pc, v);
+          writeSquare(f, r, pc, vSq);
       }
 
   ss << "PSQT derived piece values:\n";

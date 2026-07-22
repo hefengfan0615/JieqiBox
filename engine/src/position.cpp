@@ -102,7 +102,7 @@ void Position::init() {
   for (Piece pc : Pieces) {
       for (Square s = SQ_A0; s <= SQ_I9; ++s)
           Zobrist::psq[pc][s] = rng.rand<Key>();
-      for (int i = 0; i <= 6; ++i)
+      for (int i = 0; i < 5; ++i)
           Zobrist::psqDark[pc][i] = rng.rand<Key>();
   }
 
@@ -140,12 +140,12 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
       incremented after Black's move.
 */
 
-  unsigned char token,lastToken;
+  unsigned char token;
   size_t idx;
   Square sq = SQ_A9;
   std::istringstream ss(fenStr);
 
-  std::memset(this, 0, sizeof(Position));
+  new (this) Position{};
   std::memset(si, 0, sizeof(StateInfo));
   st = si;
 
@@ -190,9 +190,7 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
   Piece pt = NO_PIECE;
   restPieces[WHITE].clear();
   restPieces[BLACK].clear();
-  lastToken = ' ';
   while ((ss >> token) && !isspace(token)) {
-      lastToken = token;
       if ((idx = PieceToChar.find(token)) != string::npos) {
           if (token == 'x') {
               pt = NO_PIECE;
@@ -210,7 +208,6 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
           {
               restPieces[color_of(pt)].push_back(pt);
           }
-          lastToken = ' ';
       }
   }
   for (size_t i = 0; i < putPieces.size(); i++)
@@ -345,14 +342,14 @@ string Position::fen() const {
 
   int DarkNum[PIECE_NB];
   memset(DarkNum, 0, sizeof(DarkNum));
-  for (int i = 0; i < restPieces[WHITE].size(); i++) {
+  for (size_t i = 0; i < restPieces[WHITE].size(); i++) {
       Piece p = restPieces[WHITE].at(i);
       if (p != NO_PIECE)
       {
           DarkNum[p]++;
       }
   }
-  for (int i = 0; i < restPieces[BLACK].size(); i++) {
+  for (size_t i = 0; i < restPieces[BLACK].size(); i++) {
       Piece p = restPieces[BLACK].at(i);
       if (p != NO_PIECE)
       {
@@ -550,7 +547,6 @@ bool Position::getDark(StateInfo& newSt, int& typecount, bool& isDarkDepth) {
     Color us = ~sideToMove;
     Piece pc = NO_PIECE;
     typecount = 0;
-    Value darkV = Value(restPieces[us].evgValue());
     isDarkDepth = st->darkDepth > MAXDARKDEPTH || st->darkTypes > MAXDARKTYPES;
     if (st->darkDepth - MAXDARKDEPTH > QDARKDEPTH)return false;
     while (st->darkTypeIndex < BISHOP)
@@ -642,6 +638,13 @@ void Position::setDark() {
     --filter[st->key];
 
     assert(pos_is_ok());
+}
+
+
+bool Position::is_dark_depth() const {
+    // Mirrors the depth limit used by the existing getDark() code.
+    return st->darkDepth > MAXDARKDEPTH || st->darkTypes > MAXDARKTYPES
+        || st->darkDepth - MAXDARKDEPTH > QDARKDEPTH;
 }
 
 
@@ -1226,7 +1229,8 @@ bool Position::is_repeated(Value& result, int ply) const {
 
             // Copy the current position to a rollback struct, so we don't need to do those moves again
             Position rollback;
-            memcpy((void *)&rollback, (const void *)this, offsetof(Position, filter));
+            memcpy((void *)&rollback, (const void *)this,
+                   (size_t)(reinterpret_cast<const char*>(&filter) - reinterpret_cast<const char*>(this)));
 
             // Set up chase information
             rollback.set_chase_info(i);

@@ -26,6 +26,8 @@
 #include <vector>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 
 #include "types.h"
 
@@ -288,7 +290,7 @@ public:
     void print() {
         printf("rest db (size=%d):", (int)this->size_);
         if (!this->size_)printf("null");
-        for (int i = 0; i < this->size_; i++)
+        for (size_t i = 0; i < this->size_; i++)
         {
             if (this->values_[i] > 8) {
                 printf("B%d ", this->values_[i] - 8);
@@ -306,7 +308,7 @@ public:
         {
             if (typeNum[t] == 0)continue;
             printf(" [%d-%d]", t, typeNum[t]);
-            for (int j = 0; j < typePos[t].size(); j++)
+            for (size_t j = 0; j < typePos[t].size(); j++)
             {
                 printf(" %d", typePos[t].at(j));
             } 
@@ -355,7 +357,7 @@ public:
 
     void setUs(bool us) { _us = !us; }
 
-    void append(Piece p, int score, int count) {
+    void append(Piece, int score, int count) {
         if (!_us) score *= -1;
         if (_min > score)_min = score;
         if (_max < score)_max = score;
@@ -374,11 +376,11 @@ public:
         else if(evg == DARKVALRATE)
         {
             v = _max;
-        }        
+        }
         else if (evg == -DARKVALRATE)
         {
             v = _min;
-        }        
+        }
         else
         {
             v = evg;
@@ -389,9 +391,9 @@ public:
     }
 
 private:
-    bool _us;
     int _Ldepth;
     int _depth;
+    bool _us;
     //int _typeScore[PIECE_NB] = { 0 };
     //int _typecount[PIECE_NB] = { 0 };
     int _totalScore = 0;
@@ -399,6 +401,61 @@ private:
     //int _types = 0;
     int _min = 99999999;
     int _max = -99999999;
+};
+
+
+// ScoreCalcJieqi implements the winrate averaging algorithm used by the
+// jieqi branch for combining dark-piece flip search results.
+// It maps each result to a winrate through a logistic function, computes
+// a weighted average winrate, and converts it back to a value via the
+// inverse logistic.
+class ScoreCalcJieqi {
+public:
+    ScoreCalcJieqi(bool us) : _us(us) {}
+
+    void setUs(bool us) { _us = us; }
+
+    void append(Value v, int count) {
+        if (!_us) v = Value(-v);
+        _totalCount += count;
+        // Accumulate winrate via logistic scaling, weighted by count.
+        _winrateSum += score_to_winrate(v) * count;
+        if (v < _min) _min = v;
+        if (v > _max) _max = v;
+    }
+
+    Value CalcEvg() {
+        if (_totalCount == 0) return VALUE_ZERO;
+        double expectedWinrate = _winrateSum / _totalCount;
+        Value v = winrate_to_score(expectedWinrate);
+        if (!_us) v = Value(-v);
+        assert(v > -VALUE_INFINITE && v < VALUE_INFINITE);
+        return v;
+    }
+
+private:
+    // Sigmoid scaling factor from jieqi branch.
+    static constexpr double Scaling = 360.83524;
+    static constexpr double Epsilon  = 1e-9;
+
+    static double score_to_winrate(Value v) {
+        return 1.0 / (1.0 + std::exp(-double(v) / Scaling));
+    }
+
+    static Value winrate_to_score(double winrate) {
+        winrate = std::clamp(winrate, Epsilon, 1.0 - Epsilon);
+        double q = std::log(winrate / (1.0 - winrate));
+        double raw = q * Scaling;
+        if (raw > double(VALUE_MATE_IN_MAX_PLY - 1)) raw = double(VALUE_MATE_IN_MAX_PLY - 1);
+        if (raw < double(VALUE_MATED_IN_MAX_PLY + 1)) raw = double(VALUE_MATED_IN_MAX_PLY + 1);
+        return Value(raw);
+    }
+
+    bool    _us;
+    int     _totalCount = 0;
+    double  _winrateSum = 0.0;
+    Value   _min = VALUE_INFINITE;
+    Value   _max = -VALUE_INFINITE;
 };
 
 

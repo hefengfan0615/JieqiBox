@@ -158,6 +158,10 @@ public:
   void do_null_move(StateInfo& newSt);
   void undo_null_move();
 
+  // Helpers used by the jieqi-style flip_search.
+  bool has_pending_flip() const { return st->darkSquare != SQ_NONE; }
+  bool is_dark_depth() const;
+
   // Static Exchange Evaluation
   bool see_ge(Move m, Value threshold = VALUE_ZERO) const;
 

@@ -194,6 +194,13 @@ namespace {
   template <NodeType nodeType>
   Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
 
+  // jieqi-style dark-piece flip search. Iterates through every possible
+  // flip of the dark piece left by the previous move, recursively searches
+  // each resulting position, and combines the values using winrate
+  // averaging (logistic) just like the official jieqi branch.
+  template <NodeType nodeType>
+  Value flip_search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, bool cutNode);
+
   Value value_to_tt(Value v, int ply);
   Value value_from_tt(Value v, int ply);
   void update_pv(Move* pv, Move move, const Move* childPv);
@@ -1001,9 +1008,10 @@ namespace {
     // Step 10. If the position is not in TT, decrease depth by 3.
     // Use qsearch if depth is equal or below zero (~4 Elo)
     if (    PvNode
-        && !ttMove)
+        && !ttMove) {
         depth -= decr_0;
-        
+    }
+
 	if (    PvNode
         &&  depth > 1
         &&  ttMove)
@@ -1193,8 +1201,10 @@ moves_loop: // When in check, search starts here
               // Prune moves with negative SEE (~3 Elo)
               if (!pos.see_ge(move, Value(-Futi_par_4 * lmrDepth * lmrDepth - Futi_par_5 * lmrDepth)))
               {
-                  if (history > 0 && quietCount < 64)
-                      quietsSearched[quietCount++] = move;                  continue;
+                  if (history > 0 && quietCount < 64) {
+                      quietsSearched[quietCount++] = move;
+                      continue;
+                  }
               }
           }
       }
@@ -1303,9 +1313,6 @@ moves_loop: // When in check, search starts here
       fen3 = pos.fen();
       std::string DarkSearchInfo = "";
 #endif
-      if (mvStr == "g4g9") {
-          int a = 0;
-      }
       if (pos.do_move(move, st, givesCheck)) {
           SC.setUs(pos.isFirstSide());
           while (pos.getDark(darkSt, typecount, isDarkDepth))
@@ -1915,6 +1922,58 @@ dark_undo:
     assert(bestValue > -VALUE_INFINITE && bestValue < VALUE_INFINITE);
 
     return bestValue;
+  }
+
+
+  // flip_search() is the jieqi-style replacement for the inline dark-piece
+  // flip handling that previously lived inside search()/qsearch(). For every
+  // legal flip of the dark piece left behind by the previous move, it runs a
+  // normal recursive search and combines the resulting values using the
+  // winrate averaging algorithm (logistic) from the jieqi branch.
+  template <NodeType nodeType>
+  Value flip_search(Position& pos, Stack* ss, Value alpha, Value beta,
+                                    Depth depth, bool cutNode) {
+
+      // If the dark-piece depth is exhausted, fall back to qsearch to keep
+      // the same behaviour as the original goto-based implementation.
+      bool   isDarkDepth = pos.is_dark_depth();
+      Depth  childDepth  = isDarkDepth ? 0 : depth;
+
+      ScoreCalcJieqi sc(pos.isFirstSide());
+
+      // Fast path: no dark piece to flip. Just search the current position
+      // as the jieqi branch would.
+      if (!pos.has_pending_flip())
+          return search<nodeType>(pos, ss, alpha, beta, childDepth, cutNode);
+
+      StateInfo darkSt;
+      int       typecount = 0;
+      bool      first     = true;
+
+      while (pos.getDark(darkSt, typecount, isDarkDepth))
+      {
+          Value v;
+          if (depth <= 0)
+              v = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha,
+                                     isDarkDepth ? 0 : depth - 1);
+          else
+              v = -search<nodeType>(pos, ss + 1, -beta, -alpha,
+                                    isDarkDepth ? 0 : depth - 1, !cutNode);
+
+          if (first)
+          {
+              sc.setUs(pos.isFirstSide());
+              first = false;
+          }
+          sc.append(v, typecount);
+          pos.setDark();
+      }
+
+      // No flips were possible; defer to a normal search of the position.
+      if (first)
+          return search<nodeType>(pos, ss, alpha, beta, childDepth, cutNode);
+
+      return sc.CalcEvg();
   }
 
 
