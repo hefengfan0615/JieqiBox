@@ -161,6 +161,8 @@ namespace {
   // Different node types, used as a template parameter
   enum NodeType { NonPV, PV, Root };
 
+  // Pikafish jieqi optimized search parameters
+
   // Futility margin
   Value futility_margin(Depth d, bool improving) {
     return Value(futi_mar * (d - improving));
@@ -169,13 +171,15 @@ namespace {
   // Reductions lookup table, initialized at startup
   int Reductions[MAX_MOVES]; // [depth or moveNumber]
 
-  // Pikafish-style LMR divisor table for better reduction scaling
+  // Pikafish jieqi LMR divisor table for better reduction scaling
   static constexpr std::array<int, 16> lmrDivisor = {3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782,
                                                       2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599};
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
     int r = Reductions[d] * Reductions[mn];
-    return (r + redu_1 - int(delta) * 1024 / int(rootDelta)) / 1024 + (!i && r > redu_2);
+    // Use Pikafish jieqi scaling: divide by lmrDivisor instead of fixed 1024
+    int divisor = lmrDivisor[std::min(d, 15)];
+    return (r + redu_1 - int(delta) * divisor / int(rootDelta)) / divisor + (!i && r > redu_2);
   }
 
   int futility_move_count(bool improving, Depth depth) {
@@ -183,7 +187,7 @@ namespace {
                      : (improv_2 + depth * depth) / improv_3;
   }
 
-  // History and stats update bonus, based on depth
+  // Pikafish jieqi history bonus: more aggressive
   int stat_bonus(Depth d) {
     return std::min((st_bo_1 * d + st_bo_2) * d - st_bo_3, st_bo_4);
   }
@@ -242,8 +246,9 @@ namespace {
 
 void Search::init() {
 
+  // Pikafish jieqi reductions table formula
   for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int((double(redu_3)/double(1000.0) + std::log(Threads.size()) / 2) * std::log(i));
+      Reductions[i] = int(2321 / (849 / 10.0) * std::log(i));
 }
 
 
@@ -824,12 +829,11 @@ namespace {
                   :                                    impro_1;
     improving = improvement > 0;
 
-    // Step 6. Razoring.
-    // If eval is really low check with qsearch if it can exceed alpha, if it can't,
-    // return a fail low.
+    // Pikafish jieqi razoring: depth < 13
     if (!PvNode
 	    && !improving
-        && eval < alpha - Razo_1 - Razo_2 * depth * depth)
+        &&  depth < 13
+        &&  eval < alpha - Razo_1 - 40 * depth * depth)
     {
         value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
         if (value < alpha) {
@@ -912,7 +916,8 @@ namespace {
         }
     }
 
-    probCutBeta = beta + probCut_1 - probCut_2 * improving;
+    // Pikafish jieqi ProbCut: probCutBeta = beta + 259 - 65 * improving
+    probCutBeta = beta + 259 - 65 * improving;
 
     // Step 9. ProbCut (~4 Elo)
     // If we have a good enough capture and a reduced search returns a value
@@ -1032,7 +1037,8 @@ namespace {
 moves_loop: // When in check, search starts here
 
     // Step 11. A small Probcut idea, when we are in check (~0 Elo)
-    probCutBeta = beta + probCut_3;
+    // Pikafish jieqi: probCutBeta = beta + 430
+    probCutBeta = beta + 430;
     if (ss->inCheck
         && !PvNode
         && depth >= probdep_1
@@ -1187,16 +1193,17 @@ moves_loop: // When in check, search starts here
 
               history += 2 * thisThread->mainHistory[us][from_to(move)];
 
-              // Futility pruning: parent node (~9 Elo)
-              if (   !ss->inCheck
-                  && lmrDepth < Futi_par_6
-                  && ss->staticEval + Futi_par_1 + Futi_par_2 * lmrDepth + history / Futi_par_3 <= alpha) {
+              // Pikafish jieqi futility: 307 + 365 * lmrDepth
+              if (   !givesCheck
+                  && lmrDepth < 18
+                  && !ss->inCheck
+                  && ss->staticEval + 307 + 365 * lmrDepth <= alpha) {
                   continue;
 
               }
 
-              // Prune moves with negative SEE (~3 Elo)
-              if (!pos.see_ge(move, Value(-Futi_par_4 * lmrDepth * lmrDepth - Futi_par_5 * lmrDepth)))
+              // Pikafish jieqi SEE pruning: -38 * lmrDepth * lmrDepth
+              if (!pos.see_ge(move, Value(-38 * lmrDepth * lmrDepth)))
               {
                   if (history > 0 && quietCount < 64)
                   {
@@ -1220,7 +1227,7 @@ moves_loop: // When in check, search starts here
           // a reduced search on all the other moves but the ttMove and if the
           // result is lower than ttValue minus a margin, then we will extend the ttMove.
           if (   !rootNode
-              &&  depth >= exten_1 - (thisThread->previousDepth > 27) + 2 * (PvNode && tte->is_pv())
+              &&  depth >= 5 - (thisThread->previousDepth > 27) + 2 * (PvNode && tte->is_pv())
               &&  move == ttMove
               && !excludedMove // Avoid recursive singular search
            /* &&  ttValue != VALUE_NONE Already implicit in the next condition */
@@ -1228,7 +1235,8 @@ moves_loop: // When in check, search starts here
               && (tte->bound() & BOUND_LOWER)
               &&  tte->depth() >= depth - 3)
           {
-              Value singularBeta = ttValue - (exten_2 + (ss->ttPv && !PvNode)) * depth;
+              // Pikafish jieqi singular extension search
+              Value singularBeta = ttValue - (48 + 72 * (ss->ttPv && !PvNode)) * depth / 59;
               Depth singularDepth = (depth - 1) / 2;
 
               ss->excludedMove = move;
@@ -1372,21 +1380,21 @@ dark_calc:
       {
           Depth r = reduction(improving, depth, moveCount, delta, thisThread->rootDelta);
 
+          // Pikafish jieqi LMR adjustments
           // Decrease reduction if position is or has been on the PV
-          // and node is not likely to fail low. (~3 Elo)
           if (   ss->ttPv
               && !likelyFailLow)
               r -= decr_3 + decr_4 / (decr_5 + depth);
 
-          // Decrease reduction if opponent's move count is high (~1 Elo)
+          // Decrease reduction if opponent's move count is high
           if ((ss-1)->moveCount > 7)
               r--;
 
-          // Increase reduction for cut nodes (~3 Elo)
+          // Increase reduction for cut nodes
           if (cutNode)
               r += cutredu_1 + cutredu_2 / (cutredu_3 + depth);
 
-          // Increase reduction if ttMove is a capture (~3 Elo)
+          // Increase reduction if ttMove is a capture
           if (ttCapture)
               r++;
 
@@ -1394,11 +1402,11 @@ dark_calc:
           if (PvNode)
               r -= pvredu_1 + pvredu_2 / (pvredu_3 + depth);
 
-          // Decrease reduction if ttMove has been singularly extended (~1 Elo)
+          // Decrease reduction if ttMove has been singularly extended
           if (singularQuietLMR)
               r--;
 
-          // Increase reduction if next ply has a lot of fail high else reset count to 0
+          // Increase reduction if next ply has a lot of fail high
           if ((ss+1)->cutoffCnt > 3 && !PvNode)
               r++;
 
@@ -1408,28 +1416,26 @@ dark_calc:
                          + (*contHist[3])[movedPiece][to_sq(move)]
                          - statsc_1;
 
-          // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
+          // Pikafish jieqi: adjust reduction based on history score
           r -= ss->statScore / (decr_6 + decr_7 * (depth > decr_8 && depth < decr_9));
 
-          // In general we want to cap the LMR depth search at newDepth, but when
-          // reduction is negative, we allow this move a limited search extension
-          // beyond the first move depth. This may lead to hidden double extensions.
-          Depth d = std::clamp(newDepth - r, 1, newDepth + 1);
+          // Pikafish jieqi: use lmrDivisor for lmrDepth calculation
+          int lmrDepth = std::max(newDepth - r / 811, 0);
 
-          vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : d, true);
+          vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : lmrDepth, true);
 
           if (darkTryTimes == 0 || vTmp < value) value = vTmp;
           darkTryTimes++;
 
           // Do full depth search when reduced LMR search fails high
-          if (value > alpha && d < newDepth)
+          if (value > alpha && lmrDepth < newDepth)
           {
-              const bool doDeeperSearch = value > (alpha + lmrse_1 + lmrse_2 * (newDepth - d));
-              const bool doEvenDeeperSearch = value > (alpha + lmrse_3 + lmrse_4 * (newDepth - d));
+              const bool doDeeperSearch = value > (alpha + lmrse_1 + lmrse_2 * (newDepth - lmrDepth));
+              const bool doEvenDeeperSearch = value > (alpha + lmrse_3 + lmrse_4 * (newDepth - lmrDepth));
               const bool doShallowerSearch = value < bestValue + newDepth;
               
               newDepth += doDeeperSearch - doShallowerSearch + doEvenDeeperSearch;
-              if (newDepth > d)
+              if (newDepth > lmrDepth)
                   vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : newDepth, !cutNode);
 
               if (darkTryTimes == 0 || vTmp < value) value = vTmp;

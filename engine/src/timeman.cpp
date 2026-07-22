@@ -61,15 +61,17 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply) {
 
   startTime = limits.startTime;
 
-  // Maximum move horizon of 50 moves
-  int mtg = limits.movestogo ? std::min(limits.movestogo, 50) : 50;
+  // Pikafish jieqi: Maximum move horizon
+  int centiMTG = limits.movestogo ? std::min(limits.movestogo * 100, 6000) : 6000;
+
+  // Pikafish jieqi: If less than one second, gradually reduce mtg
+  if (limits.time[us] < 1000)
+      centiMTG = limits.time[us] * 6;
 
   // Make sure timeLeft is > 0 since we may use it as a divisor
   TimePoint timeLeft =  std::max(TimePoint(1),
-      limits.time[us] + limits.inc[us] * (mtg - 1) - moveOverhead * (2 + mtg));
-
-  // Use extra time with larger increments
-  double optExtra = std::clamp(1.0 + 12.0 * limits.inc[us] / limits.time[us], 1.0, 1.12);
+      limits.time[us]
+      + (limits.inc[us] * (centiMTG - 100) - moveOverhead * (200 + centiMTG)) / 100);
 
   // A user may scale time usage by setting UCI option "Slow Mover"
   // Default is 100 and changing this value will probably lose elo.
@@ -80,23 +82,28 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply) {
   // game time for the current move, so also cap to 20% of available game time.
   if (limits.movestogo == 0)
   {
-      optScale = std::min(0.0120 + std::pow(ply + 3.0, 0.45) * 0.0039,
-                           0.2 * limits.time[us] / double(timeLeft))
-                 * optExtra;
-      maxScale = std::min(7.0, 4.0 + ply / 12.0);
+      // Pikafish jieqi: logarithmic time constant based on time left
+      double logTimeInSec = std::log10(timeLeft / 1000.0);
+      double optConstant  = std::min(0.00344000 + 0.000200000 * logTimeInSec, 0.00450000);
+      double maxConstant  = std::max(3.9000 + 3.10000 * logTimeInSec, 2.50000);
+
+      optScale = std::min(0.0155000 + std::pow(ply + 3.00000, 0.450000) * optConstant,
+                          0.200000 * limits.time[us] / double(timeLeft));
+
+      maxScale = std::min(6.50000, maxConstant + ply / 13.6000);
   }
 
   // x moves in y seconds (+ z increment)
   else
   {
-      optScale = std::min((0.88 + ply / 116.4) / mtg,
-                            0.88 * limits.time[us] / double(timeLeft));
-      maxScale = std::min(6.3, 1.5 + 0.11 * mtg);
+      optScale = std::min((0.88 + ply / 116.4) / (centiMTG / 100.0),
+                           0.88 * limits.time[us] / double(timeLeft));
+      maxScale = std::min(6.3, 1.3 + 0.11 * (centiMTG / 100.0));
   }
 
-  // Never use more than 80% of the available time for this move
+  // Pikafish jieqi: Never use more than 81% of the available time for this move
   optimumTime = TimePoint(optScale * timeLeft);
-  maximumTime = TimePoint(std::min(0.8 * limits.time[us] - moveOverhead, maxScale * optimumTime));
+  maximumTime = TimePoint(std::min(0.810000 * limits.time[us] - moveOverhead, maxScale * optimumTime)) - 10;
 
   if (Options["Ponder"])
       optimumTime += optimumTime / 4;
