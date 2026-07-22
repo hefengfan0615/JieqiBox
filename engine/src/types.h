@@ -103,7 +103,7 @@ constexpr bool Is64Bit = true;
 constexpr bool Is64Bit = false;
 #endif
 
-#define USE_NNUEEVAL 0
+#define USE_NNUEEVAL 1
 constexpr int DARKVALRATE = 2862;//5000-10000
 constexpr int DARKMAXDIFF = 4812;//500-5000
 
