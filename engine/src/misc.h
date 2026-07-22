@@ -21,6 +21,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -348,6 +349,8 @@ private:
 };
 
 
+// Pikafish jieqi dark piece score calculator using winrate-based weighted averaging
+// Uses sigmoid-based winrate conversion for mathematically correct averaging
 class ScoreCalc {
 public:
     ScoreCalc(int Ldepth, int depth, bool us) :
@@ -355,48 +358,43 @@ public:
 
     void setUs(bool us) { _us = !us; }
 
+    // Pikafish jieqi winrate scaling constant
+    static constexpr double scaling = 360.83524;
+
+    // Convert score to winrate using sigmoid
+    static double score_to_winrate(Value v) {
+        return 1.0 / (1.0 + std::exp(-static_cast<double>(v) / scaling));
+    }
+
+    // Convert winrate back to score
+    static Value winrate_to_score(double winrate) {
+        constexpr double epsilon = 1e-9;
+        winrate = std::clamp(winrate, epsilon, 1.0 - epsilon);
+        double q = std::log(winrate / (1.0 - winrate));
+        return static_cast<Value>(std::clamp(q * scaling,
+            static_cast<double>(VALUE_MATED_IN_MAX_PLY + 1),
+            static_cast<double>(VALUE_MATE_IN_MAX_PLY - 1)));
+    }
+
     void append(Piece, int score, int count) {
         if (!_us) score *= -1;
-        if (_min > score)_min = score;
-        if (_max < score)_max = score;
-        score = std::clamp(score, -DARKVALRATE, DARKVALRATE);
-        _totalScore += score * count;
+        double wr = score_to_winrate(Value(score));
+        _winrateSum += wr * count;
         _totalCount += count;
     }
 
     Value CalcEvg() {
-        int min = std::clamp(_min, -DARKVALRATE, DARKVALRATE);
-        int v;
-        int evg = _totalScore / _totalCount;
-        if (evg - min > DARKMAXDIFF) {
-            v = _min;
-        }
-        else if(evg == DARKVALRATE)
-        {
-            v = _max;
-        }        
-        else if (evg == -DARKVALRATE)
-        {
-            v = _min;
-        }        
-        else
-        {
-            v = evg;
-        }
-        if (!_us) v *= -1;
+        double expectedWinrate = _winrateSum / _totalCount;
+        Value v = winrate_to_score(expectedWinrate);
+        if (!_us) v = -v;
         assert(v > -VALUE_INFINITE && v < VALUE_INFINITE);
-        return Value(v);
+        return v;
     }
 
 private:
     bool _us;
-    //int _typeScore[PIECE_NB] = { 0 };
-    //int _typecount[PIECE_NB] = { 0 };
-    int _totalScore = 0;
+    double _winrateSum = 0.0;
     int _totalCount = 0;
-    //int _types = 0;
-    int _min = 99999999;
-    int _max = -99999999;
 };
 
 

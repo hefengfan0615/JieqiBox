@@ -119,6 +119,7 @@ public:
   bool isDark(Square s) const;
   Dark Darkof(Square s)const;
   Dark Darkof(Piece p)const;
+  bool move_dark(Move m) const { return isDark(from_sq(m)); }
 
 
   bool empty(Square s) const;
