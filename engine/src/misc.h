@@ -351,7 +351,7 @@ private:
 class ScoreCalc {
 public:
     ScoreCalc(int Ldepth, int depth, bool us) :
-        _us(us), _Ldepth(Ldepth), _depth(depth){}
+        _us(us) { (void)Ldepth; (void)depth; }
 
     void setUs(bool us) { _us = !us; }
 
@@ -390,8 +390,6 @@ public:
 
 private:
     bool _us;
-    int _Ldepth;
-    int _depth;
     //int _typeScore[PIECE_NB] = { 0 };
     //int _typecount[PIECE_NB] = { 0 };
     int _totalScore = 0;
