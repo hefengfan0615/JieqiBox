@@ -23,6 +23,7 @@
 #include <string>
 
 #include "evaluate.h"
+#include "nnue/evaluate_nnue.h"
 #include "movegen.h"
 #include "position.h"
 #include "search.h"

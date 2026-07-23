@@ -1,14 +1,17 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
+
   Stockfish is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
+
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -29,6 +32,10 @@
 #include "misc.h"
 #include "thread.h"
 #include "uci.h"
+#include "nnue/evaluate_nnue.h"
+#include "nnue/network.h"
+#include "nnue/nnue_accumulator.h"
+#include "nnue/nnue_misc.h"
 
 using namespace std;
 
@@ -45,6 +52,8 @@ namespace Eval {
   /// in the engine directory.
 
   void NNUE::init() {
+
+    NNUE::init_network();
 
     string eval_file = string(Options["EvalFile"]);
     if (eval_file.empty())
@@ -64,7 +73,6 @@ namespace Eval {
 
   /// NNUE::verify() verifies that the last net used was loaded successfully
   void NNUE::verify() {
-#if USE_NNUEEVAL 
     string eval_file = string(Options["EvalFile"]);
     if (eval_file.empty())
         eval_file = EvalFileDefaultName;
@@ -86,9 +94,6 @@ namespace Eval {
     }
 
     sync_cout << "info string NNUE evaluation using " << eval_file << " enabled" << sync_endl;
-#else
-      return;
-#endif
   }
 }
 
@@ -490,30 +495,8 @@ namespace {
 /// evaluation of the position from the point of view of the side to move.
 
 Value Eval::evaluate(const Position& pos, int* complexity) {
-#if USE_NNUEEVAL     
-  int nnueComplexity;
-  Value v = NNUE::evaluate(pos, &nnueComplexity);
-  // Blend nnue complexity with material complexity
-  nnueComplexity = (90 * nnueComplexity + 121 * abs(v - pos.material_diff())) / 256;
-  if (complexity) // Return hybrid NNUE complexity to caller
-      *complexity = nnueComplexity;
 
-  int scale = 1035 + 126 * pos.material_sum() / 4214;
-  Value optimism = pos.this_thread()->optimism[pos.side_to_move()];
-  optimism = optimism * (281 + nnueComplexity) / 256;
-  v = (v * scale + optimism * (scale - 780)) / 1024;
-
-  // Guarantee evaluation does not hit the mate range
-  v = std::clamp(v, VALUE_MATED_IN_MAX_PLY + 1, VALUE_MATE_IN_MAX_PLY - 1);
-
-  return v;
-#else
-    if (complexity)
-        *complexity = 0;
-    Value v = Evaluation<NO_TRACE>(pos).value();
-    return v;
-#endif
-
+    return NNUE::evaluate(pos, complexity);
 }
 
 // format_cp_compact() converts a Value into (centi)pawns and writes it in a buffer.
@@ -553,107 +536,7 @@ static void format_cp_compact(Value v, char* buffer) {
 
 std::string Eval::trace(Position& pos) {
 
-  if (pos.checkers())
-      return "Final evaluation: none (in check)";
-
-  std::stringstream ss;
-  ss << std::showpoint << std::noshowpos << std::fixed << std::setprecision(2);
-
-  Value v;
-
-  // Reset any global variable used in eval
-  pos.this_thread()->bestValue       = VALUE_ZERO;
-  pos.this_thread()->optimism[WHITE] = VALUE_ZERO;
-  pos.this_thread()->optimism[BLACK] = VALUE_ZERO;
-
-  char board[3 * RANK_NB + 1][8 * FILE_NB + 2];
-  std::memset(board, ' ', sizeof(board));
-  for (int row = 0; row < 3 * RANK_NB + 1; ++row)
-      board[row][8 * FILE_NB + 1] = '\0';
-
-
-  // A lambda to output one box of the board
-  auto writeSquare = [&board](File file, Rank rank, Piece pc, Value value) {
-      const std::string PieceToChar(" RACPNBK racpnbk XXXXXX  xxxxxx");
-
-      const int x = ((int)file) * 8;
-      const int y = (RANK_9 - (int)rank) * 3;
-      for (int i = 1; i < 8; ++i)
-          board[y][x + i] = board[y + 3][x + i] = '-';
-      for (int i = 1; i < 3; ++i)
-          board[y + i][x] = board[y + i][x + 8] = '|';
-      board[y][x] = board[y][x + 8] = board[y + 3][x + 8] = board[y + 3][x] = '+';
-      if (pc != NO_PIECE)
-          board[y + 1][x + 4] = PieceToChar[pc];
-      if (value != VALUE_NONE)
-          format_cp_compact(value, &board[y + 2][x + 2]);
-  };
-
-  // We estimate the value of each piece by doing a differential evaluation from
-  // the current base eval, simulating the removal of the piece from its square.
-  Value base = evaluate(pos);
-  base = pos.side_to_move() == WHITE ? base : -base;
-
-  for (File f = FILE_A; f <= FILE_I; ++f)
-      for (Rank r = RANK_0; r <= RANK_9; ++r)
-      {
-          Square sq = make_square(f, r);
-          Piece pc = pos.piece_on(sq);
-          Value sqValue = VALUE_NONE;
-
-          if (pc != NO_PIECE && type_of(pc) != KING)
-          {
-              [[maybe_unused]] auto st = pos.state();
-
-              pos.remove_piece(sq);
-              Score score = pos.psq_score();
-              Value eval = (mg_value(score) * (pos.count<ALL_PIECES>() * 1000 / 32) + eg_value(score) * (1000 - pos.count<ALL_PIECES>() * 1000 / 32)) / 1000;
-              eval = pos.side_to_move() == WHITE ? eval : -eval;
-              sqValue = base - eval;
-
-              pos.put_piece(pc, sq);
-          }
-
-          writeSquare(f, r, pc, sqValue);
-      }
-
-  ss << "PSQT derived piece values:\n";
-  for (int row = 0; row < 3 * RANK_NB + 1; ++row)
-      ss << board[row] << '\n';
-  ss << '\n';
-
-  v = Evaluation<TRACE>(pos).value();
-
-  ss << std::showpoint << std::noshowpos << std::fixed << std::setprecision(2)
-     << " Contributing terms for the classical eval:\n"
-     << "+------------+-------------+-------------+-------------+\n"
-     << "|    Term    |    White    |    Black    |    Total    |\n"
-     << "|            |   MG    EG  |   MG    EG  |   MG    EG  |\n"
-     << "+------------+-------------+-------------+-------------+\n"
-     << "|   Material | " << Term(MATERIAL)
-     << "|  Imbalance | " << Term(IMBALANCE)
-     << "|       Pair | " << Term(PAIR)
-     << "|      Pawns | " << Term(PAWN)
-     << "|    Knights | " << Term(KNIGHT)
-     << "|    Bishops | " << Term(BISHOP)
-     << "|      Rooks | " << Term(ROOK)
-     << "|   Mobility | " << Term(MOBILITY)
-     << "|King safety | " << Term(KING)
-     << "|    Threats | " << Term(THREAT)
-     << "|     Passed | " << Term(PASSED)
-     << "|      Space | " << Term(SPACE)
-     << "|   Winnable | " << Term(WINNABLE)
-     << "+------------+-------------+-------------+-------------+\n"
-     << "|      Total | " << Term(TOTAL)
-     << "+------------+-------------+-------------+-------------+\n";
-
-  ss << std::showpoint << std::showpos << std::fixed << std::setprecision(2) << std::setw(15);
-
-  v = evaluate(pos);
-  v = pos.side_to_move() == WHITE ? v : -v;
-  ss << "Final evaluation       " << to_cp(v) << " (white side) [with scaled NNUE, optimism, ...]\n";
-
-  return ss.str();
+  return NNUE::trace(pos);
 }
 
 } // namespace Stockfish

@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -21,39 +21,46 @@
 #ifndef NNUE_EVALUATE_NNUE_H_INCLUDED
 #define NNUE_EVALUATE_NNUE_H_INCLUDED
 
-#include "nnue_feature_transformer.h"
+#include <string>
+#include <optional>
 
-#include <memory>
+#include "../types.h"
 
-namespace Stockfish::Eval::NNUE {
+namespace Stockfish {
 
-  // Hash value of evaluation function structure
-  constexpr std::uint32_t HashValue =
-      FeatureTransformer::get_hash_value() ^ Network::get_hash_value();
+class Position;
 
-  // Deleter for automating release of memory area
-  template <typename T>
-  struct AlignedDeleter {
-    void operator()(T* ptr) const {
-      ptr->~T();
-      std_aligned_free(ptr);
-    }
-  };
+namespace Eval::NNUE {
 
-  template <typename T>
-  struct LargePageDeleter {
-    void operator()(T* ptr) const {
-      ptr->~T();
-      aligned_large_pages_free(ptr);
-    }
-  };
+class Network;
+struct AccumulatorCaches;
 
-  template <typename T>
-  using AlignedPtr = std::unique_ptr<T, AlignedDeleter<T>>;
+// Get the global network and accumulator caches
+const Network& get_network();
+AccumulatorCaches& get_caches();
 
-  template <typename T>
-  using LargePagePtr = std::unique_ptr<T, LargePageDeleter<T>>;
+// Initialize the global network and caches (called before loading)
+void init_network();
+
+// Load the network from the default file location
+void load_network();
+
+// Verify the network
+void verify_network();
+
+// Load/save eval from/to streams
+bool load_eval(std::string name, std::istream& stream);
+bool save_eval(std::ostream& stream);
+bool save_eval(const std::optional<std::string>& filename);
+
+// Evaluate a position using the global network
+Value evaluate(const Position& pos, int* complexity = nullptr);
+
+// trace() returns a string with the value of each piece on a board
+std::string trace(Position& pos);
 
 }  // namespace Stockfish::Eval::NNUE
+
+}  // namespace Stockfish
 
 #endif // #ifndef NNUE_EVALUATE_NNUE_H_INCLUDED

@@ -188,6 +188,8 @@ public:
   // Used by NNUE
   StateInfo* state() const;
 
+  Square king_square(Color c) const { return square<KING>(c); }
+
   void put_piece(Piece pc, Square s, bool updatepsq = true);
   void remove_piece(Square s, bool updatepsq = true);
 

@@ -407,6 +407,8 @@ struct DirtyPiece {
   // From and to squares, which may be SQ_NONE
   Square from[3];
   Square to[3];
+
+  bool requires_refresh[2];
 };
 
 /// Score enum stores a middlegame and an endgame value in a single integer (enum).
@@ -543,6 +545,10 @@ constexpr bool is_ok(Square s) {
 
 constexpr File file_of(Square s) {
   return File(s % FILE_NB);
+}
+
+constexpr Square flip_file(Square s) { // Swap A0 <-> I0
+  return Square(s - s % 9 + (FILE_I - file_of(s)));
 }
 
 constexpr Rank rank_of(Square s) {

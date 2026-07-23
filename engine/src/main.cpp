@@ -16,6 +16,7 @@
 #include <iostream>
 
 #include "bitboard.h"
+#include "evaluate.h"
 #include "position.h"
 #include "search.h"
 #include "thread.h"
