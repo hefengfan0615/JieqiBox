@@ -288,7 +288,7 @@ public:
     void print() {
         printf("rest db (size=%d):", (int)this->size_);
         if (!this->size_)printf("null");
-        for (int i = 0; i < this->size_; i++)
+        for (size_t i = 0; i < this->size_; i++)
         {
             if (this->values_[i] > 8) {
                 printf("B%d ", this->values_[i] - 8);
@@ -297,7 +297,7 @@ public:
             {
                 printf("W%d ", this->values_[i]);
             }
-            
+
         }
         printf("\r\n");
 
@@ -306,14 +306,14 @@ public:
         {
             if (typeNum[t] == 0)continue;
             printf(" [%d-%d]", t, typeNum[t]);
-            for (int j = 0; j < typePos[t].size(); j++)
+            for (size_t j = 0; j < typePos[t].size(); j++)
             {
                 printf(" %d", typePos[t].at(j));
-            } 
+            }
             printf(",");
         }
         printf("\r\n\r\n");
-        
+
     }
 
     void shuffle() { 
@@ -351,11 +351,11 @@ private:
 class ScoreCalc {
 public:
     ScoreCalc(int Ldepth, int depth, bool us) :
-        _Ldepth(Ldepth), _depth(depth), _us(us){}
+        _us(us), _Ldepth(Ldepth), _depth(depth){}
 
     void setUs(bool us) { _us = !us; }
 
-    void append(Piece p, int score, int count) {
+    void append([[maybe_unused]] Piece p, int score, int count) {
         if (!_us) score *= -1;
         if (_min > score)_min = score;
         if (_max < score)_max = score;

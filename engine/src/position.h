@@ -128,6 +128,10 @@ public:
   template<PieceType Pt> int darkcount() const;
   template<PieceType Pt> Square square(Color c) const;
 
+  // Number of remaining (face-down) pieces of the given color in total / of a given type
+  int count_rest_pieces(Color c) const;
+  int count_rest_pieces(Color c, PieceType pt) const;
+
   // Checking
   Bitboard checkers() const;
   Bitboard blockers_for_king(Color c) const;
@@ -307,6 +311,14 @@ template<PieceType Pt> inline int Position::darkcount(Color c) const {
 
 template<PieceType Pt> inline int Position::darkcount() const {
     return darkcount<Pt>(WHITE) + darkcount<Pt>(BLACK);
+}
+
+inline int Position::count_rest_pieces(Color c) const {
+    return restPieces[c].size();
+}
+
+inline int Position::count_rest_pieces(Color c, PieceType pt) const {
+    return restPieces[c].countType(pt);
 }
 
 template<PieceType Pt> inline Square Position::square(Color c) const {

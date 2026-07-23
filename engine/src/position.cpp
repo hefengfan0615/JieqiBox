@@ -102,7 +102,7 @@ void Position::init() {
   for (Piece pc : Pieces) {
       for (Square s = SQ_A0; s <= SQ_I9; ++s)
           Zobrist::psq[pc][s] = rng.rand<Key>();
-      for (int i = 0; i <= 6; ++i)
+      for (int i = 0; i < 5; ++i)
           Zobrist::psqDark[pc][i] = rng.rand<Key>();
   }
 
@@ -140,13 +140,20 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
       incremented after Black's move.
 */
 
-  unsigned char token,lastToken;
+  [[maybe_unused]] unsigned char token, lastToken;
   size_t idx;
   Square sq = SQ_A9;
   std::istringstream ss(fenStr);
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
   std::memset(this, 0, sizeof(Position));
   std::memset(si, 0, sizeof(StateInfo));
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
   st = si;
 
   ss >> std::noskipws;
@@ -345,14 +352,14 @@ string Position::fen() const {
 
   int DarkNum[PIECE_NB];
   memset(DarkNum, 0, sizeof(DarkNum));
-  for (int i = 0; i < restPieces[WHITE].size(); i++) {
+  for (size_t i = 0; i < restPieces[WHITE].size(); i++) {
       Piece p = restPieces[WHITE].at(i);
       if (p != NO_PIECE)
       {
           DarkNum[p]++;
       }
   }
-  for (int i = 0; i < restPieces[BLACK].size(); i++) {
+  for (size_t i = 0; i < restPieces[BLACK].size(); i++) {
       Piece p = restPieces[BLACK].at(i);
       if (p != NO_PIECE)
       {
@@ -550,7 +557,7 @@ bool Position::getDark(StateInfo& newSt, int& typecount, bool& isDarkDepth) {
     Color us = ~sideToMove;
     Piece pc = NO_PIECE;
     typecount = 0;
-    Value darkV = Value(restPieces[us].evgValue());
+    [[maybe_unused]] Value darkV = Value(restPieces[us].evgValue());
     isDarkDepth = st->darkDepth > MAXDARKDEPTH || st->darkTypes > MAXDARKTYPES;
     if (st->darkDepth - MAXDARKDEPTH > QDARKDEPTH)return false;
     while (st->darkTypeIndex < BISHOP)
@@ -1226,7 +1233,14 @@ bool Position::is_repeated(Value& result, int ply) const {
 
             // Copy the current position to a rollback struct, so we don't need to do those moves again
             Position rollback;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+#endif
             memcpy((void *)&rollback, (const void *)this, offsetof(Position, filter));
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
             // Set up chase information
             rollback.set_chase_info(i);

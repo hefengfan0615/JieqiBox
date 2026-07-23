@@ -915,6 +915,10 @@ config-sanity: net
 $(EXE): $(OBJS)
 	+$(CXX) -o $@ $(OBJS) $(LDFLAGS)
 
+# No-op target: nnue network is optional, do not download
+net:
+	@echo "Skipping nnue network download"
+
 clang-profile-make:
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) \
 	EXTRACXXFLAGS='-fprofile-instr-generate ' \

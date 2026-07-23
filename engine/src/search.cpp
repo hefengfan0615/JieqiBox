@@ -194,6 +194,16 @@ namespace {
   template <NodeType nodeType>
   Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
 
+  // flip_search handles positions where the last move landed on a dark (face-down)
+  // piece. It iterates over every possible revealed type of the dark piece, runs
+  // a sub-search (search or qsearch) for each, and aggregates the per-flip
+  // results into a single expected score using a score-to-winrate transform.
+  template <NodeType nodeType>
+  Value flip_search(Position& pos, Stack* ss, Value alpha, Value beta,
+                    bool isQsearch = true,
+                    [[maybe_unused]] Depth depth = 0,
+                    [[maybe_unused]] bool cutNode = false);
+
   Value value_to_tt(Value v, int ply);
   Value value_from_tt(Value v, int ply);
   void update_pv(Move* pv, Move move, const Move* childPv);
@@ -615,6 +625,11 @@ namespace {
 #endif
         return qv;
     }
+
+    // Dive into flip search when the last move is moving a dark piece
+    if (is_ok((ss - 1)->currentMove) && pos.isDark(to_sq((ss - 1)->currentMove))) {
+        return flip_search<nodeType == Root ? PV : nodeType>(pos, ss, alpha, beta, false, depth, cutNode);
+    }
         
 
     assert(-VALUE_INFINITE <= alpha && alpha < beta && beta <= VALUE_INFINITE);
@@ -1001,10 +1016,11 @@ namespace {
     // Step 10. If the position is not in TT, decrease depth by 3.
     // Use qsearch if depth is equal or below zero (~4 Elo)
     if (    PvNode
-        && !ttMove)
+        && !ttMove) {
         depth -= decr_0;
-        
-	if (    PvNode
+    }
+
+    if (    PvNode
         &&  depth > 1
         &&  ttMove)
         depth -= std::clamp((depth - tte->depth()) / decr_1, 0, decr_2);
@@ -1193,8 +1209,10 @@ moves_loop: // When in check, search starts here
               // Prune moves with negative SEE (~3 Elo)
               if (!pos.see_ge(move, Value(-Futi_par_4 * lmrDepth * lmrDepth - Futi_par_5 * lmrDepth)))
               {
-                  if (history > 0 && quietCount < 64)
-                      quietsSearched[quietCount++] = move;                  continue;
+                  if (history > 0 && quietCount < 64) {
+                      quietsSearched[quietCount++] = move;
+                  }
+                  continue;
               }
           }
       }
@@ -1303,9 +1321,6 @@ moves_loop: // When in check, search starts here
       fen3 = pos.fen();
       std::string DarkSearchInfo = "";
 #endif
-      if (mvStr == "g4g9") {
-          int a = 0;
-      }
       if (pos.do_move(move, st, givesCheck)) {
           SC.setUs(pos.isFirstSide());
           while (pos.getDark(darkSt, typecount, isDarkDepth))
@@ -1648,18 +1663,143 @@ dark_undo:
   }
 
 
+  // flip_search() enumerates the unknown face-down piece left by the previous
+  // move. For every remaining piece type the dark piece could be, it reveals
+  // the piece, performs a sub-search, and un-reveals it. The per-flip results
+  // are combined into a single expected score using a logistic score <-> win
+  // rate transform. If only one piece type is possible, the corresponding
+  // search result is returned directly.
+  template <NodeType nodeType>
+  Value flip_search(Position& pos, Stack* ss, Value alpha, Value beta,
+                    bool isQsearch, [[maybe_unused]] Depth depth,
+                    [[maybe_unused]] bool cutNode) {
+
+      constexpr double scaling = 360.83524;
+      auto score_to_winrate = [](Value v) {
+          return 1.0 / (1.0 + std::exp(-static_cast<double>(v) / scaling));
+      };
+      auto winrate_to_score = [](double winrate) {
+          constexpr double epsilon = 1e-9;
+          winrate              = std::clamp(winrate, epsilon, 1.0 - epsilon);
+          double q             = std::log(winrate / (1.0 - winrate));
+          return std::clamp(static_cast<Value>(q * scaling), VALUE_MATED_IN_MAX_PLY + 1,
+                            VALUE_MATE_IN_MAX_PLY - 1);
+      };
+      auto is_win     = [](Value v) { return v >= VALUE_MATE_IN_MAX_PLY; };
+      auto is_loss    = [](Value v) { return v <= VALUE_MATED_IN_MAX_PLY; };
+      auto is_decisive = [&](Value v) { return is_win(v) || is_loss(v); };
+
+      // Total count of opponent's remaining (face-down) pieces; this is the
+      // normalization denominator for the expected win rate.
+      const Color us = ~pos.side_to_move();
+      int total      = pos.count_rest_pieces(us);
+
+      // No remaining pieces to reveal -- fall back to a static evaluation. This
+      // branch is only reached if the caller invokes flip_search without any
+      // hidden piece, which is not expected but handled defensively.
+      if (total == 0)
+          return evaluate(pos);
+
+      // Collect per-flip results
+      struct Entry {
+          Value value;
+          int   count;
+      };
+      std::vector<Entry> results;
+
+      // Save and reset the dark-type cursor so we re-enumerate all types.
+      const int saved_darkTypeIndex = pos.state()->darkTypeIndex;
+      pos.state()->darkTypeIndex    = NO_PIECE_TYPE;
+
+      StateInfo darkSt;
+      int       typecount    = 0;
+      bool      isDarkDepth  = false;
+
+      while (pos.getDark(darkSt, typecount, isDarkDepth))
+      {
+          const Value value = isQsearch ? qsearch<nodeType>(pos, ss, alpha, beta)
+                                        : search<nodeType>(pos, ss, alpha, beta, isDarkDepth ? 0 : depth, cutNode);
+
+          results.push_back({value, typecount});
+
+          pos.setDark();
+      }
+
+      pos.state()->darkTypeIndex = saved_darkTypeIndex;
+
+      // If only a single flip was possible, the loop body above returns its
+      // value directly. If no flips were possible, fall back to evaluation.
+      if (results.empty())
+          return evaluate(pos);
+      if (results.size() == 1)
+          return results[0].value;
+
+      // If every leaf score is a decisive mate score, return the best (shortest)
+      // mate for the side to move, or the worst (latest) mated score if no mate
+      // is found among the leaves.
+      bool all_decisive = true;
+      for (const auto& e : results)
+      {
+          if (!is_decisive(e.value))
+          {
+              all_decisive = false;
+              break;
+          }
+      }
+
+      if (all_decisive)
+      {
+          Value best_win_mate  = VALUE_MATE;
+          Value best_loss_mate = -VALUE_MATE;
+
+          for (const auto& e : results)
+          {
+              const Value v = e.value;
+              if (is_win(v))
+              {
+                  if (v < best_win_mate)
+                      best_win_mate = v;
+              }
+              else if (is_loss(v))
+              {
+                  if (v > best_loss_mate)
+                      best_loss_mate = v;
+              }
+          }
+
+          if (best_win_mate != VALUE_MATE)
+              return best_win_mate;
+          return best_loss_mate;
+      }
+
+      // Otherwise, weight each leaf's win rate by the number of pieces of that
+      // type and convert the expected win rate back to a score.
+      double winrate_sum = 0.0;
+      for (const auto& e : results)
+          winrate_sum += score_to_winrate(e.value) * e.count;
+
+      const double expectedWinrate = winrate_sum / total;
+      return winrate_to_score(expectedWinrate);
+  }
+
+
   // qsearch() is the quiescence search function, which is called by the main search
   // function with zero depth, or recursively with further decreasing depth per call.
   // (~155 elo)
   template <NodeType nodeType>
   Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth) {
-      
+
     static_assert(nodeType != Root);
     constexpr bool PvNode = nodeType == PV;
 
     assert(alpha >= -VALUE_INFINITE && alpha < beta && beta <= VALUE_INFINITE);
     assert(PvNode || (alpha == beta - 1));
     assert(depth <= 0);
+
+    // Dive into flip search when the last move is moving a dark piece
+    if (is_ok((ss - 1)->currentMove) && pos.isDark(to_sq((ss - 1)->currentMove))) {
+        return flip_search<nodeType>(pos, ss, alpha, beta, true, depth, false);
+    }
 
     Move pv[MAX_PLY+1];
     StateInfo st;
