@@ -25,6 +25,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <utility>
 #include <stdlib.h>
 #include <time.h>
 #include "bitboard.h"
@@ -152,6 +153,9 @@ public:
   // Doing and undoing moves
   bool getDark(StateInfo& newSt, int& typecount, bool& isDarkDepth);
   void setDark();
+  Piece do_flip(Square s, PieceType pt);
+  void undo_flip(Square s, Piece fromPc);
+  std::vector<std::pair<Piece, int>> rest_pieces(Color c) const;
   bool do_move_temp(Move m, StateInfo& newSt, PieceType flipped = NO_PIECE_TYPE);
   bool do_move(Move m, StateInfo& newSt, bool givesCheck);
   void undo_move(Move m);

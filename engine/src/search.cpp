@@ -194,6 +194,9 @@ namespace {
   template <NodeType nodeType>
   Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
 
+  template <NodeType nodeType>
+  Value flip_search(Position& pos, Stack* ss, Value alpha, Value beta, bool isQsearch, Depth depth, bool cutNode);
+
   Value value_to_tt(Value v, int ply);
   Value value_from_tt(Value v, int ply);
   void update_pv(Move* pv, Move move, const Move* childPv);
@@ -939,36 +942,9 @@ namespace {
                                                                           [pos.moved_piece(move)]
                                                                           [to_sq(move)];
                 
-                if(pos.do_move_temp(move, st)){
-                    StateInfo darkSt;
-                    
-                    int tryTypeTimes = 0, typecount = 0;
-                    bool isDarkDepth;
-                    ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-                    while (pos.getDark(darkSt, typecount, isDarkDepth))
-                    {
-                        Value vTmp;
-                        // Perform a preliminary qsearch to verify that the move holds
-                        vTmp = -qsearch<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1);
-                        // If the qsearch held, perform the regular search
-                        if (vTmp >= probCutBeta)
-                            vTmp = -search<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1, isDarkDepth ? 0 : depth - 4, !cutNode);
-
-                        SC.append(pos.piece_on(to_sq(move)), vTmp, typecount);
-                        //get worse
-                        tryTypeTimes++;
-                        pos.setDark();
-                    }
-                    
-                    if (tryTypeTimes == 0) { 
-                        pos.undo_move(move);
-                        continue; 
-                    }
-                    else
-                    {
-                        value = SC.CalcEvg();
-                    }
-
+                Move probMoveNoType = make_move(from_sq(move), to_sq(move));
+                if(pos.do_move_temp(probMoveNoType, st)){
+                    value = -flip_search<NonPV>(pos, ss, -probCutBeta, -probCutBeta + 1, false, depth - 4, !cutNode);
                 }
                 else
                 {
@@ -1003,8 +979,8 @@ namespace {
     if (    PvNode
         && !ttMove)
         depth -= decr_0;
-        
-	if (    PvNode
+
+    if (    PvNode
         &&  depth > 1
         &&  ttMove)
         depth -= std::clamp((depth - tte->depth()) / decr_1, 0, decr_2);
@@ -1194,7 +1170,8 @@ moves_loop: // When in check, search starts here
               if (!pos.see_ge(move, Value(-Futi_par_4 * lmrDepth * lmrDepth - Futi_par_5 * lmrDepth)))
               {
                   if (history > 0 && quietCount < 64)
-                      quietsSearched[quietCount++] = move;                  continue;
+                      quietsSearched[quietCount++] = move;
+                  continue;
               }
           }
       }
@@ -1292,60 +1269,14 @@ moves_loop: // When in check, search starts here
       //pos.do_move(move, st, givesCheck);
 
       Value vTmp = value;
-      int darkTryTimes = 0;
-      bool fromWhile = false;
-      StateInfo darkSt;
-      std::string fen3, mvStr = UCI::move(move);
-      int tryTypeTimes = 0, typecount = 0;
-      ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-      bool isDarkDepth = false;
 #if SEARCHDEBUG
-      fen3 = pos.fen();
       std::string DarkSearchInfo = "";
 #endif
-      if (mvStr == "g4g9") {
-          int a = 0;
-      }
-      if (pos.do_move(move, st, givesCheck)) {
-          SC.setUs(pos.isFirstSide());
-          while (pos.getDark(darkSt, typecount, isDarkDepth))
-          {
-              fromWhile = true;
-              goto dark_calc;
-dark_while:              
-              tryTypeTimes++;
-              SC.append(pos.piece_on(to_sq(move)), vTmp, typecount);
-#if SEARCHDEBUG
-              if (darkPrint) {
-                  if (!DarkSearchInfo.empty())DarkSearchInfo.append(",");
-                  DarkSearchInfo.append(std::to_string(pos.piece_on(to_sq(move))));
-                  DarkSearchInfo.append(" ");
-                  DarkSearchInfo.append(std::to_string(vTmp));
-                  DarkSearchInfo.append(" ");
-                  DarkSearchInfo.append(std::to_string(typecount));
-                  DarkSearchInfo.append(" ");
-              }
-
-#endif
-              pos.setDark();
-          }
-          fromWhile = false;
-          if (darkTryTimes == 0) {
-              pos.undo_move(move);
-              continue;
-          }
-          else
-          {
-              value = SC.CalcEvg();
-#if SEARCHDEBUG
-              if (darkPrint) {
-                  DarkSearchInfo.append("----evg:");
-                  DarkSearchInfo.append(std::to_string(value));
-                  DarkSearchInfo.append(" ");
-              }
-#endif 
-              goto dark_undo;
-          }
+      Move moveNoType = make_move(from_sq(move), to_sq(move));
+      if (pos.do_move(moveNoType, st, givesCheck)) {
+          vTmp = flip_search<nodeType>(pos, ss, alpha, beta, false, depth, cutNode);
+          value = vTmp;
+          goto dark_undo;
       }
       else
       {
@@ -1411,10 +1342,9 @@ dark_calc:
           // beyond the first move depth. This may lead to hidden double extensions.
           Depth d = std::clamp(newDepth - r, 1, newDepth + 1);
 
-          vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : d, true);
+          vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
 
-          if (darkTryTimes == 0 || vTmp < value) value = vTmp;
-          darkTryTimes++;
+          value = vTmp;
 
           // Do full depth search when reduced LMR search fails high
           if (value > alpha && d < newDepth)
@@ -1425,11 +1355,9 @@ dark_calc:
               
               newDepth += doDeeperSearch - doShallowerSearch + doEvenDeeperSearch;
               if (newDepth > d)
-                  vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : newDepth, !cutNode);
+                  vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth, !cutNode);
 
-              if (darkTryTimes == 0 || vTmp < value) value = vTmp;
-
-              darkTryTimes++;
+              value = vTmp;
 
               int bonus = value > alpha ?  stat_bonus(newDepth)
                                         : -stat_bonus(newDepth);
@@ -1444,11 +1372,9 @@ dark_calc:
       // Step 17. Full depth search when LMR is skipped
       else if (!PvNode || moveCount > 1)
       {
-              vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : newDepth, !cutNode);
+              vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth, !cutNode);
 
-              if (darkTryTimes == 0 || vTmp < value) value = vTmp;
-
-              darkTryTimes++;
+              value = vTmp;
       }
 
       // For PV nodes only, do a full PV search on the first move or after a fail
@@ -1460,16 +1386,11 @@ dark_calc:
           (ss+1)->pv[0] = MOVE_NONE;
 
           vTmp = -search<PV>(pos, ss+1, -beta, -alpha,
-              isDarkDepth ? 0 : std::min(maxNextDepth, newDepth), false);
-          //get worse
-          if (darkTryTimes == 0 || vTmp < value) value = vTmp;
-          darkTryTimes++;
-      }
-      if (fromWhile) {
-          goto dark_while;
+              std::min(maxNextDepth, newDepth), false);
+          value = vTmp;
       }
 dark_undo:
-      if (darkTryTimes == 0)value = vTmp;
+      value = vTmp;
       // Step 18. Undo move
       pos.undo_move(move);
 
@@ -1847,28 +1768,10 @@ dark_undo:
 
       // Make and search the move
       Value vTmp;
-      int tryTypeTimes = 0, typecount = 0;
-      ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-      bool isDarkDepth;
-      std::string cfen;
-      if (pos.do_move(move, st, givesCheck)) {
-          StateInfo darkSt;
-          SC.setUs(pos.isFirstSide());
-          while (pos.getDark(darkSt, typecount, isDarkDepth))
-          {
-              vTmp = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, isDarkDepth ? 0 : depth - 1);
-              tryTypeTimes++;
-              SC.append(pos.piece_on(to_sq(move)), vTmp, typecount);
-              pos.setDark();
-          }
-          if (tryTypeTimes == 0) {
-              pos.undo_move(move);
-              continue;
-          }
-          else
-          {
-              value = SC.CalcEvg();
-          }
+      Move qsMoveNoType = make_move(from_sq(move), to_sq(move));
+      if (pos.do_move(qsMoveNoType, st, givesCheck)) {
+          vTmp = flip_search<nodeType>(pos, ss, -beta, -alpha, true, depth - 1, false);
+          value = vTmp;
       }
       else
       {
@@ -1915,6 +1818,84 @@ dark_undo:
     assert(bestValue > -VALUE_INFINITE && bestValue < VALUE_INFINITE);
 
     return bestValue;
+  }
+
+
+  // flip_search() is called when the last move moved a dark piece.
+  // It iterates through all possible piece types for the dark piece,
+  // searches each one, and computes the expected value.
+
+  template <NodeType nodeType>
+  Value flip_search(Position& pos, Stack* ss, Value alpha, Value beta, bool isQsearch, Depth depth, bool cutNode) {
+
+      auto restPieces = pos.rest_pieces(pos.side_to_move());
+      if (restPieces.empty())
+          return VALUE_DRAW;
+
+      int total = 0;
+      for (const auto& [piece, num] : restPieces)
+          total += num;
+
+      struct Entry { Value value; int count; };
+      std::vector<Entry> results;
+      results.reserve(restPieces.size());
+
+      Square sq = to_sq((ss - 1)->currentMove);
+
+      for (auto& [piece, num] : restPieces)
+      {
+          Piece flipped_piece = pos.do_flip(sq, type_of(piece));
+
+          Value value;
+          if (isQsearch)
+              value = qsearch<NonPV>(pos, ss, alpha, beta);
+          else
+              value = search<nodeType>(pos, ss, alpha, beta, depth, cutNode);
+
+          pos.undo_flip(sq, flipped_piece);
+
+          if (restPieces.size() == 1)
+              return value;
+
+          results.push_back({value, num});
+      }
+
+      // Check if all results are decisive (all above beta or all below alpha)
+      bool all_decisive = true;
+      bool all_above = true;
+      bool all_below = true;
+      for (const auto& [value, count] : results)
+      {
+          all_above &= value >= beta;
+          all_below &= value <= alpha;
+      }
+      if (!all_above && !all_below)
+          all_decisive = false;
+
+      if (all_decisive)
+      {
+          // Return the worst score
+          Value worst = results[0].value;
+          for (const auto& [value, count] : results)
+              if (value < worst) worst = value;
+          return worst;
+      }
+
+      // Winrate-based averaging
+      constexpr double scaling = 360.83524;
+      constexpr auto score_to_winrate = [](Value v) {
+          return 1.0 / (1.0 + std::exp(-int(v) / scaling));
+      };
+      constexpr auto winrate_to_score = [](double w) {
+          return static_cast<Value>(scaling * std::log(w / (1.0 - w)));
+      };
+
+      double winrate = 0.0;
+      for (const auto& [value, count] : results)
+          winrate += count * score_to_winrate(value);
+      winrate /= total;
+
+      return winrate_to_score(winrate);
   }
 
 

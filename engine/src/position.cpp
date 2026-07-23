@@ -37,7 +37,7 @@ namespace Stockfish {
 namespace Zobrist {
 
   Key psq[PIECE_NB][SQUARE_NB];
-  Key psqDark[PIECE_NB][5];
+  Key psqDark[PIECE_NB][7];
   Key side;
 }
 
@@ -140,12 +140,16 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
       incremented after Black's move.
 */
 
-  unsigned char token,lastToken;
+  unsigned char token;
+  unsigned char lastToken = ' ';
   size_t idx;
   Square sq = SQ_A9;
   std::istringstream ss(fenStr);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
   std::memset(this, 0, sizeof(Position));
+#pragma GCC diagnostic pop
   std::memset(si, 0, sizeof(StateInfo));
   st = si;
 
@@ -236,6 +240,7 @@ Position& Position::set(const string& fenStr, StateInfo* si, Thread* th) {
 
   assert(pos_is_ok());
 
+  (void)lastToken;
   return *this;
 }
 
@@ -345,14 +350,14 @@ string Position::fen() const {
 
   int DarkNum[PIECE_NB];
   memset(DarkNum, 0, sizeof(DarkNum));
-  for (int i = 0; i < restPieces[WHITE].size(); i++) {
+  for (size_t i = 0; i < restPieces[WHITE].size(); i++) {
       Piece p = restPieces[WHITE].at(i);
       if (p != NO_PIECE)
       {
           DarkNum[p]++;
       }
   }
-  for (int i = 0; i < restPieces[BLACK].size(); i++) {
+  for (size_t i = 0; i < restPieces[BLACK].size(); i++) {
       Piece p = restPieces[BLACK].at(i);
       if (p != NO_PIECE)
       {
@@ -550,7 +555,6 @@ bool Position::getDark(StateInfo& newSt, int& typecount, bool& isDarkDepth) {
     Color us = ~sideToMove;
     Piece pc = NO_PIECE;
     typecount = 0;
-    Value darkV = Value(restPieces[us].evgValue());
     isDarkDepth = st->darkDepth > MAXDARKDEPTH || st->darkTypes > MAXDARKTYPES;
     if (st->darkDepth - MAXDARKDEPTH > QDARKDEPTH)return false;
     while (st->darkTypeIndex < BISHOP)
@@ -644,6 +648,100 @@ void Position::setDark() {
     assert(pos_is_ok());
 }
 
+
+
+/// Position::do_flip() flips a dark piece at square s to a known piece type pt.
+/// Returns the dark piece that was on the square.
+
+Piece Position::do_flip(Square s, PieceType pt) {
+
+    assert(is_ok(s) && isDark(s));
+
+    Color us   = ~sideToMove;
+    Color them = ~us;
+    Piece fromPc = piece_on(s);
+    assert(color_of(fromPc) == us);
+
+    // Pop the piece from restPieces
+    Piece pc = restPieces[us].pop_back(pt);
+    assert(pc != NO_PIECE);
+
+    // Update hash key for rest count change
+    int newCount = restPieces[us].countType(pt);
+    st->key ^= Zobrist::psqDark[pc][newCount];
+
+    // Update bloom filter
+    ++filter[st->key];
+
+    // Replace the piece on the board
+    remove_piece(s, false);
+    put_piece(pc, s, false);
+
+    // Update hash key for the piece change
+    st->key ^= Zobrist::psq[fromPc][s] ^ Zobrist::psq[pc][s];
+
+    // Update checkers
+    st->checkersBB = checkers_to(us, square<KING>(them));
+
+    // Update check info
+    set_check_info(st);
+
+    thisThread->nodes.fetch_add(1, std::memory_order_relaxed);
+
+    assert(pos_is_ok());
+
+    return fromPc;
+}
+
+
+/// Position::undo_flip() undoes a flip, restoring the dark piece.
+
+void Position::undo_flip(Square s, Piece fromPc) {
+
+    assert(is_ok(s) && !isDark(s));
+
+    Color us = ~sideToMove;
+    Piece pc = piece_on(s);
+    assert(color_of(pc) == us);
+
+    // Update hash key for rest count change (before push)
+    int curCount = restPieces[us].countType(type_of(pc));
+    st->key ^= Zobrist::psqDark[pc][curCount];
+
+    // Push the piece back to restPieces
+    restPieces[us].push_back(pc);
+
+    // Replace the piece on the board
+    remove_piece(s, false);
+    put_piece(fromPc, s, false);
+
+    // Update hash key for the piece change
+    st->key ^= Zobrist::psq[pc][s] ^ Zobrist::psq[fromPc][s];
+
+    // Update bloom filter
+    --filter[st->key];
+
+    assert(pos_is_ok());
+}
+
+
+/// Position::rest_pieces() returns the remaining pieces for a given color
+/// as a vector of (piece, count) pairs.
+
+std::vector<std::pair<Piece, int>> Position::rest_pieces(Color c) const {
+    std::vector<std::pair<Piece, int>> pieces;
+    const PieceType pieceOrder[] = {ROOK, CANNON, KNIGHT, ADVISOR, BISHOP, PAWN};
+    for (PieceType pt : pieceOrder)
+    {
+        int cnt = restPieces[c].countType(pt);
+        if (cnt > 0)
+        {
+            Piece pc = make_piece(c, pt);
+            pieces.emplace_back(pc, cnt);
+        }
+    }
+    return pieces;
+}
 
 
 /// Position::do_move() makes a move, and saves all information necessary
@@ -1226,7 +1324,10 @@ bool Position::is_repeated(Value& result, int ply) const {
 
             // Copy the current position to a rollback struct, so we don't need to do those moves again
             Position rollback;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
             memcpy((void *)&rollback, (const void *)this, offsetof(Position, filter));
+#pragma GCC diagnostic pop
 
             // Set up chase information
             rollback.set_chase_info(i);
