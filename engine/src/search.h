@@ -73,6 +73,15 @@ struct RootMove {
   Value score = -VALUE_INFINITE;
   Value previousScore = -VALUE_INFINITE;
   Value averageScore = -VALUE_INFINITE;
+  // Running mean of (value * |value|). Together with averageScore it lets us
+  // estimate the variance of the score for a root move and size the aspiration
+  // window accordingly. jieqi reference uses the same scheme. Stored as int
+  // (not Value) to avoid the Value*Value operator overload ambiguity.
+  int   meanSquaredScore = -VALUE_INFINITE * int(VALUE_INFINITE);
+  // Score last sent to the GUI; used as a stable fallback when the current
+  // iteration did not produce a complete result (e.g. PV truncated by a dark
+  // piece move or the search was stopped before convergence).
+  Value uciScore = -VALUE_INFINITE;
   int selDepth = 0;
   std::vector<Move> pv;
 };

@@ -427,16 +427,22 @@ void Thread::search() {
           if (rootDepth >= 4)
           {
               Value prev = rootMoves[pvIdx].averageScore;
-              delta = Value(delt_1) + int(prev) * prev / delt_2;
+              // Baseline delta: matches the previous behaviour. We add a
+              // variance-driven term that widens the window when the previous
+              // iterations disagreed on the score (sign of a noisy evaluation
+              // that has not yet converged). This follows the jieqi approach
+              // where the delta scales with meanSquaredScore / averageScore.
+              const int varianceTerm = (std::abs(rootMoves[pvIdx].meanSquaredScore) + 4) / 8;
+              delta = Value(delt_1) + int(prev) * prev / delt_2 + Value(varianceTerm / 64);
               alpha = std::max(prev - delta,-VALUE_INFINITE);
               beta  = std::min(prev + delta, VALUE_INFINITE);
 
               // Adjust optimism based on root move's previousScore
               int opt;
-			  if (-opt_4 <= prev && prev < 0)
+              if (-opt_4 <= prev && prev < 0)
                   opt = - int(prev) * int(prev) / opt_5;
               else
-				  opt = opt_2 * prev / (std::abs(prev) + opt_3);
+                  opt = opt_2 * prev / (std::abs(prev) + opt_3);
               optimism[ us] = Value(opt);
               optimism[~us] = -optimism[us];
           }
@@ -508,6 +514,21 @@ void Thread::search() {
 
       if (!Threads.stop)
           completedDepth = rootDepth;
+
+      // Make sure each root move has a usable uciScore before the next
+      // iteration. uciScore is the score most recently broadcast to the GUI
+      // and is what we fall back on when the current iteration's score is
+      // -VALUE_INFINITE (e.g. a move was not fully searched because the
+      // search stopped). Doing this here guarantees the score displayed in
+      // the GUI doesn't oscillate wildly between iterations when the PV is
+      // truncated by a dark piece move.
+      for (RootMove& rm : rootMoves)
+      {
+          if (rm.score != -VALUE_INFINITE)
+              rm.uciScore = rm.score;
+          else if (rm.uciScore == -VALUE_INFINITE && rm.previousScore != -VALUE_INFINITE)
+              rm.uciScore = rm.previousScore;
+      }
 
       if (rootMoves[0].pv[0] != lastBestMove) {
          lastBestMove = rootMoves[0].pv[0];
@@ -1523,10 +1544,19 @@ dark_undo:
 
           rm.averageScore = rm.averageScore != -VALUE_INFINITE ? (2 * value + rm.averageScore) / 3 : value;
 
+          // Maintain a running mean of value*|value| so we can later estimate
+          // the score variance and widen the aspiration window for unstable
+          // moves. See jieqi search.cpp for the equivalent code.
+          const int valueTimesAbs = int(value) * std::abs(int(value));
+          rm.meanSquaredScore = rm.meanSquaredScore != -VALUE_INFINITE * int(VALUE_INFINITE)
+                                ? (valueTimesAbs + rm.meanSquaredScore) / 2
+                                : valueTimesAbs;
+
           // PV move or new best move?
           if (moveCount == 1 || value > alpha)
           {
               rm.score = value;
+              rm.uciScore = value;
               rm.selDepth = thisThread->selDepth;
               rm.pv.resize(1);
 
@@ -2243,7 +2273,18 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
           continue;
 
       Depth d = updated ? depth : std::max(1, depth - 1);
-      Value v = updated ? rootMoves[i].score : rootMoves[i].previousScore;
+      // Prefer the previously broadcast score (uciScore) when the current
+      // iteration did not produce a usable result. This keeps the score
+      // displayed in the GUI stable across iterations, especially when the
+      // PV is truncated because the first move reveals a dark piece. Falls
+      // back to previousScore and finally to ZERO.
+      Value v;
+      if (updated)
+          v = rootMoves[i].score;
+      else if (rootMoves[i].uciScore != -VALUE_INFINITE)
+          v = rootMoves[i].uciScore;
+      else
+          v = rootMoves[i].previousScore;
 
       if (v == -VALUE_INFINITE)
           v = VALUE_ZERO;

@@ -390,13 +390,10 @@ public:
 
 private:
     bool _us;
-    int _Ldepth;
-    int _depth;
-    //int _typeScore[PIECE_NB] = { 0 };
-    //int _typecount[PIECE_NB] = { 0 };
+    [[maybe_unused]] int _Ldepth;
+    [[maybe_unused]] int _depth;
     int _totalScore = 0;
     int _totalCount = 0;
-    //int _types = 0;
     int _min = 99999999;
     int _max = -99999999;
 };
