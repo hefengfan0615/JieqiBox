@@ -134,9 +134,7 @@ private:
 template<Color Us>
 void Evaluation::initialize() {
 
-    constexpr Color     Them = ~Us;
-    const Square        ksq  = pos.king_square(Us);
-    constexpr Bitboard  LowRanks = (Us == WHITE ? Rank0BB | Rank1BB : Rank8BB | Rank9BB);
+    const Square ksq = pos.king_square(Us);
 
     // Initialize attackedBy[] for king and pawns
     attackedBy[Us][KING] = attacks_bb<KING>(ksq);

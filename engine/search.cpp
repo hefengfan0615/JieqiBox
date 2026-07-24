@@ -463,7 +463,7 @@ void Search::Worker::do_move(Position& pos, const Move move, StateInfo& st) {
 }
 
 void Search::Worker::do_move(Position& pos, const Move move, StateInfo& st, const bool givesCheck) {
-    DirtyPiece dp = pos.do_move(move, st, givesCheck, &tt);
+    pos.do_move(move, st, givesCheck, &tt);
     nodes.fetch_add(1, std::memory_order_relaxed);
 }
 
