@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,49 +19,33 @@
 #ifndef TIMEMAN_H_INCLUDED
 #define TIMEMAN_H_INCLUDED
 
-#include <cstdint>
-
 #include "misc.h"
+#include "search.h"
+#include "thread.h"
 
 namespace Stockfish {
 
-class OptionsMap;
-enum Color : int8_t;
+/// The TimeManagement class computes the optimal time to think depending on
+/// the maximum available time, the game move number and other parameters.
 
-namespace Search {
-struct LimitsType;
-}
-
-// The TimeManagement class computes the optimal time to think depending on
-// the maximum available time, the game move number, and other parameters.
 class TimeManagement {
-   public:
-    void init(Search::LimitsType& limits,
-              Color               us,
-              int                 ply,
-              const OptionsMap&   options,
-              double&             originalTimeAdjust);
+public:
+  void init(Search::LimitsType& limits, Color us, int ply);
+  TimePoint optimum() const { return optimumTime; }
+  TimePoint maximum() const { return maximumTime; }
+  TimePoint elapsed() const { return Search::Limits.npmsec ?
+                                     TimePoint(Threads.nodes_searched()) : now() - startTime; }
 
-    TimePoint optimum() const;
-    TimePoint maximum() const;
-    template<typename FUNC>
-    TimePoint elapsed(FUNC nodes) const {
-        return useNodesTime ? TimePoint(nodes()) : elapsed_time();
-    }
-    TimePoint elapsed_time() const { return now() - startTime; };
+  int64_t availableNodes; // When in 'nodes as time' mode
 
-    void clear();
-    void advance_nodes_time(std::int64_t nodes);
-
-   private:
-    TimePoint startTime;
-    TimePoint optimumTime;
-    TimePoint maximumTime;
-
-    std::int64_t availableNodes = -1;     // When in 'nodes as time' mode
-    bool         useNodesTime   = false;  // True if we are in 'nodes as time' mode
+private:
+  TimePoint startTime;
+  TimePoint optimumTime;
+  TimePoint maximumTime;
 };
 
-}  // namespace Stockfish
+extern TimeManagement Time;
 
-#endif  // #ifndef TIMEMAN_H_INCLUDED
+} // namespace Stockfish
+
+#endif // #ifndef TIMEMAN_H_INCLUDED

@@ -2,11 +2,15 @@
 **/*.o
 **/*.s
 src/.depend
+src/*.bak
 
 # Files from Qt
-build
-CMakeLists.txt
-CMakeLists.txt.user
+*.pro
+*.pro.user
+
+# Files from VS
+src/.vs/
+src/x64/
 
 # Built binary
 src/pikafish*

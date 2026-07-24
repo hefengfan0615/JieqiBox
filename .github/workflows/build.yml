@@ -13,7 +13,7 @@ env:
 
 jobs:
   build-android:
-    name: Build Android (no-yolo, with Pikafish engine + NNUE)
+    name: Build Android (no-yolo, with Pikafish engine)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,39 +48,11 @@ jobs:
         with:
           targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
 
-      - name: Install 7z
-        run: sudo apt-get update && sudo apt-get install -y p7zip-full
-
-      - name: Download NNUE net
-        shell: bash
-        run: |
-          set -euo pipefail
-          NNUE_URL="https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2024-08-31/Pikafish.2024-08-31.7z"
-          echo "Downloading NNUE from $NNUE_URL"
-          curl -L --fail -o pikafish.7z "$NNUE_URL"
-          if [ ! -s pikafish.7z ]; then
-            echo "::error::NNUE 7z download failed or file is empty"
-            exit 1
-          fi
-          echo "Extracting 7z archive..."
-          7z x pikafish.7z -oextracted_nnue -y
-          # Find the .nnue file
-          NNUE_FILE=$(find extracted_nnue -type f -name "*.nnue" | head -n 1)
-          if [ -z "$NNUE_FILE" ]; then
-            echo "::error::No .nnue file found in extracted archive"
-            find extracted_nnue -type f
-            exit 1
-          fi
-          echo "Found NNUE file: $NNUE_FILE"
-          mkdir -p engine_assets
-          cp "$NNUE_FILE" engine_assets/nnue.bin
-          echo "NNUE file copied to engine_assets/nnue.bin"
-
       - name: Compile Pikafish engine for Android ARM64
         shell: bash
         run: |
           set -euo pipefail
-          cd engine/src
+          cd engine
           # Add NDK toolchain to PATH
           NDK_TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export PATH="$NDK_TOOLCHAIN:$PATH"
@@ -88,7 +60,8 @@ jobs:
           make clean
           make -j build COMP=ndk ARCH=armv8 EXE=pikafish-armv8
           llvm-strip pikafish-armv8
-          cp pikafish-armv8 ../../engine_assets/
+          mkdir -p ../engine_assets
+          cp pikafish-armv8 ../engine_assets/
           echo "Pikafish engine compiled for Android ARM64"
 
       - name: Test engine (initial position, depth 20)
@@ -101,12 +74,11 @@ jobs:
           echo -e "uci\nisready\nucinewgame\nposition startpos\ngo depth 20\nquit" | qemu-aarch64-static ./pikafish-armv8 2>&1 || true
           echo "=== Engine test completed ==="
 
-      - name: Copy engine + NNUE to Tauri resources
+      - name: Copy engine to Tauri resources
         run: |
           mkdir -p src-tauri/engines
           cp engine_assets/pikafish-armv8 src-tauri/engines/
-          cp engine_assets/nnue.bin src-tauri/engines/
-          echo "Engine and NNUE copied to Tauri resources"
+          echo "Engine copied to Tauri resources"
 
       - name: Remove onnxruntime dependencies for no-yolo build
         shell: bash
@@ -223,7 +195,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body: 'Pikafish engine + NNUE bundled APK (no-yolo). Commit: ${{ github.sha }}'
+          body: 'Pikafish engine bundled APK (no-yolo). Commit: ${{ github.sha }}'
           files: |
             jieqibox-android-no-yolo/**/*.apk
             jieqibox-android-no-yolo/**/*.aab
