@@ -259,6 +259,11 @@ void Search::clear() {
 
 void MainThread::search() {
 
+  // Reset stop flag to ensure search starts properly. start_thinking() already
+  // set stop = false, but a race with the UCI loop (e.g., EOF triggering "quit")
+  // may have set it back to true before this thread woke up.
+  Threads.stop = false;
+
   if (Limits.perft)
   {
       nodes = perft<true>(rootPos, Limits.perft);
@@ -269,8 +274,6 @@ void MainThread::search() {
   Color us = rootPos.side_to_move();
   Time.init(Limits, us, rootPos.game_ply());
   TT.new_search();
-
-  
 
   if (rootMoves.empty())
   {
