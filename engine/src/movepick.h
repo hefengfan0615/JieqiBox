@@ -105,6 +105,10 @@ typedef Stats<int16_t, 29952, PIECE_NB, SQUARE_NB> PieceToHistory;
 /// (~63 elo)
 typedef Stats<PieceToHistory, NOT_USED, PIECE_NB, SQUARE_NB> ContinuationHistory;
 
+/// LowPlyHistory records history for moves at low plies (ply < LOW_PLY_HISTORY_SIZE)
+constexpr int LOW_PLY_HISTORY_SIZE = 4;
+typedef Stats<int16_t, 5396, LOW_PLY_HISTORY_SIZE, 1 << 14> LowPlyHistory;
+
 
 /// MovePicker class is used to pick one pseudo-legal move at a time from the
 /// current position. The most important method is next_move(), which returns a

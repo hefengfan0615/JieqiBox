@@ -48,9 +48,12 @@ struct Stack {
   Value staticEval;
   int statScore;
   int moveCount;
+  int reduction;
+  int quietMoveStreak;
   bool inCheck;
   bool ttPv;
   bool ttHit;
+  bool isPvNode;
   int doubleExtensions;
   int cutoffCnt;
 };
@@ -83,6 +86,7 @@ struct RootMove {
   // piece move or the search was stopped before convergence).
   Value uciScore = -VALUE_INFINITE;
   int selDepth = 0;
+  uint64_t effort = 0;
   std::vector<Move> pv;
 };
 
