@@ -1117,36 +1117,9 @@ namespace {
                                                                           [pos.moved_piece(move)]
                                                                           [to_sq(move)];
 
-                if(pos.do_move_temp(move, st)){
-                    StateInfo darkSt;
-
-                    int tryTypeTimes = 0, typecount = 0;
-                    bool isDarkDepth;
-                    ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-                    while (pos.getDark(darkSt, typecount, isDarkDepth))
-                    {
-                        Value vTmp;
-                        // Perform a preliminary qsearch to verify that the move holds
-                        vTmp = -qsearch<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1);
-                        // If the qsearch held, perform the regular search
-                        if (vTmp >= probCutBeta)
-                            vTmp = -search<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1, isDarkDepth ? 0 : depth - probCut_3, !cutNode);
-
-                        SC.append(pos.piece_on(to_sq(move)), vTmp, typecount);
-                        //get worse
-                        tryTypeTimes++;
-                        pos.setDark();
-                    }
-
-                    if (tryTypeTimes == 0) {
-                        pos.undo_move(move);
-                        continue;
-                    }
-                    else
-                    {
-                        value = SC.CalcEvg();
-                    }
-
+                if (pos.do_move_temp(move, st)) {
+                    // Use flip_search to handle dark piece uncertainty (Pikafish approach)
+                    value = -flip_search<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1, false, depth - probCut_3, !cutNode);
                 }
                 else
                 {
@@ -1451,146 +1424,89 @@ moves_loop: // When in check, search starts here
       // Step 15. Make the move
       uint64_t nodeCount = rootNode ? uint64_t(thisThread->nodes.load()) : 0;
 
-      Value vTmp = value;
-      int darkTryTimes = 0;
-      bool fromWhile = false;
-      StateInfo darkSt;
-      std::string fen3, mvStr = UCI::move(move);
-      int tryTypeTimes = 0, typecount = 0;
-      ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-      bool isDarkDepth = false;
-#if SEARCHDEBUG
-      fen3 = pos.fen();
-      std::string DarkSearchInfo = "";
-#endif
       if (pos.do_move(move, st, givesCheck)) {
-          SC.setUs(pos.isFirstSide());
-          while (pos.getDark(darkSt, typecount, isDarkDepth))
-          {
-              fromWhile = true;
-              goto dark_calc;
-dark_while:              
-              tryTypeTimes++;
-              SC.append(pos.piece_on(to_sq(move)), vTmp, typecount);
-#if SEARCHDEBUG
-              if (darkPrint) {
-                  if (!DarkSearchInfo.empty())DarkSearchInfo.append(",");
-                  DarkSearchInfo.append(std::to_string(pos.piece_on(to_sq(move))));
-                  DarkSearchInfo.append(" ");
-                  DarkSearchInfo.append(std::to_string(vTmp));
-                  DarkSearchInfo.append(" ");
-                  DarkSearchInfo.append(std::to_string(typecount));
-                  DarkSearchInfo.append(" ");
-              }
-
-#endif
-              pos.setDark();
-          }
-          fromWhile = false;
-          if (darkTryTimes == 0) {
-              pos.undo_move(move);
-              continue;
-          }
-          else
-          {
-              value = SC.CalcEvg();
-#if SEARCHDEBUG
-              if (darkPrint) {
-                  DarkSearchInfo.append("----evg:");
-                  DarkSearchInfo.append(std::to_string(value));
-                  DarkSearchInfo.append(" ");
-              }
-#endif 
-              goto dark_undo;
-          }
+          // Dark piece move — use flip_search to handle uncertainty (Pikafish approach)
+          // flip_search enumerates all possible piece types, runs sub-searches, and
+          // aggregates results via a logistic score ↔ win-rate transform.
+          value = -flip_search<NonPV>(pos, ss + 1, -beta, -alpha, false, newDepth, !cutNode);
       }
       else
       {
-          goto dark_calc;
-      }
-
-      
-
-dark_calc:
-      // Step 16. Late moves reduction / extension (LMR, ~98 Elo)
-      // jieqi-style LMR with comprehensive reduction adjustments
-      if (depth >= 2 && moveCount > 1)
-      {
-          // Decrease reduction for PvNodes (*Scaler)
-          if (ss->ttPv)
-              r -= redu_6 + PvNode * redu_7 + (ttValue > alpha) * redu_8
-                 + (tte->depth() >= depth) * (redu_9 + cutNode * redu_10);
-
-          // These reduction adjustments have no proven non-linear scaling
-          r += redu_11;  // Base reduction offset
-          r -= moveCount * redu_12;
-          r -= std::abs(correctionValue) / redu_13;
-
-          // Increase reduction for cut nodes
-          if (cutNode)
-              r += redu_14 + redu_15 * !ttMove;
-
-          // Increase reduction if ttMove is a capture
-          if (ttCapture)
-              r += redu_16 + (depth < redu_17) * redu_18;
-
-          // Increase reduction if next ply has a lot of fail high
-          if ((ss+1)->cutoffCnt > redu_19)
-              r += redu_20 + allNode * redu_21;
-
-          r += (ss+1)->quietMoveStreak * redu_22;
-
-          // For first picked move (ttMove) reduce reduction
-          if (move == ttMove)
-              r -= redu_23;
-
-          ss->statScore = statsc_4 * thisThread->mainHistory[us][from_to(move)]
-                        + (*contHist[0])[movedPiece][to_sq(move)]
-                        + (*contHist[1])[movedPiece][to_sq(move)]
-                        - statsc_5;
-
-          // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
-          r -= ss->statScore * statsc_6 / statsc_7;
-
-          // In general we want to cap the LMR depth search at newDepth, but when
-          // reduction is negative, we allow this move a limited search extension
-          // beyond the first move depth. This may lead to hidden double extensions.
-          Depth d = std::max(1, std::min(newDepth - r / redu_24,
-                                         newDepth + !allNode + (PvNode && !bestMove)))
-                  + (ss-1)->isPvNode;
-
-          ss->reduction = newDepth - d;
-          vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : d, true);
-          ss->reduction = 0;
-
-          if (darkTryTimes == 0 || vTmp < value) value = vTmp;
-          darkTryTimes++;
-
-          // Do full depth search when reduced LMR search fails high
-          if (value > alpha && d < newDepth)
+          // Step 16. Late moves reduction / extension (LMR, ~98 Elo)
+          // jieqi-style LMR with comprehensive reduction adjustments
+          if (depth >= 2 && moveCount > 1)
           {
-              const bool doDeeperSearch = value > (bestValue + lmrse_1 + lmrse_2 * newDepth);
-              const bool doShallowerSearch = value < bestValue + lmrse_3;
+              // Decrease reduction for PvNodes (*Scaler)
+              if (ss->ttPv)
+                  r -= redu_6 + PvNode * redu_7 + (ttValue > alpha) * redu_8
+                     + (tte->depth() >= depth) * (redu_9 + cutNode * redu_10);
 
-              newDepth += doDeeperSearch - doShallowerSearch;
-              if (newDepth > d)
-                  vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : newDepth, !cutNode);
+              // These reduction adjustments have no proven non-linear scaling
+              r += redu_11;  // Base reduction offset
+              r -= moveCount * redu_12;
+              r -= std::abs(correctionValue) / redu_13;
 
-              if (darkTryTimes == 0 || vTmp < value) value = vTmp;
+              // Increase reduction for cut nodes
+              if (cutNode)
+                  r += redu_14 + redu_15 * !ttMove;
 
-              darkTryTimes++;
+              // Increase reduction if ttMove is a capture
+              if (ttCapture)
+                  r += redu_16 + (depth < redu_17) * redu_18;
 
-              // Post LMR continuation history updates
-              if (value > alpha)
-                  update_continuation_histories(ss, movedPiece, to_sq(move), lmrse_4);
+              // Increase reduction if next ply has a lot of fail high
+              if ((ss+1)->cutoffCnt > redu_19)
+                  r += redu_20 + allNode * redu_21;
+
+              r += (ss+1)->quietMoveStreak * redu_22;
+
+              // For first picked move (ttMove) reduce reduction
+              if (move == ttMove)
+                  r -= redu_23;
+
+              ss->statScore = statsc_4 * thisThread->mainHistory[us][from_to(move)]
+                            + (*contHist[0])[movedPiece][to_sq(move)]
+                            + (*contHist[1])[movedPiece][to_sq(move)]
+                            - statsc_5;
+
+              // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
+              r -= ss->statScore * statsc_6 / statsc_7;
+
+              // In general we want to cap the LMR depth search at newDepth, but when
+              // reduction is negative, we allow this move a limited search extension
+              // beyond the first move depth. This may lead to hidden double extensions.
+              Depth d = std::max(1, std::min(newDepth - r / redu_24,
+                                             newDepth + !allNode + (PvNode && !bestMove)))
+                      + (ss-1)->isPvNode;
+
+              ss->reduction = newDepth - d;
+              value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
+              ss->reduction = 0;
+
+              // Do full depth search when reduced LMR search fails high
+              if (value > alpha && d < newDepth)
+              {
+                  const bool doDeeperSearch = value > (bestValue + lmrse_1 + lmrse_2 * newDepth);
+                  const bool doShallowerSearch = value < bestValue + lmrse_3;
+
+                  newDepth += doDeeperSearch - doShallowerSearch;
+                  if (newDepth > d)
+                  {
+                      Value vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth, !cutNode);
+                      if (vTmp < value) value = vTmp;
+                  }
+
+                  // Post LMR continuation history updates
+                  if (value > alpha)
+                      update_continuation_histories(ss, movedPiece, to_sq(move), lmrse_4);
+              }
+              else if (value > alpha && value < bestValue + lmrse_3)
+                  newDepth--;
           }
-          else if (value > alpha && value < bestValue + lmrse_3)
-              newDepth--;
-      }
 
-      // Step 17. Full depth search when LMR is skipped
-      else if (!PvNode || moveCount > 1)
-      {
+          // Step 17. Full depth search when LMR is skipped
+          else if (!PvNode || moveCount > 1)
+          {
               // Increase reduction if ttMove is not present
               if (!ttMove)
                   r += redu_25;
@@ -1598,36 +1514,27 @@ dark_calc:
               r -= thisThread->ttMoveHistory / redu_26;
 
               // Note that if expected reduction is high, we reduce search depth here
-              vTmp = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, isDarkDepth ? 0 : newDepth - (r > redu_27) - (r > redu_28 && newDepth > redu_29), !cutNode);
+              value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth - (r > redu_27) - (r > redu_28 && newDepth > redu_29), !cutNode);
+          }
 
-              if (darkTryTimes == 0 || vTmp < value) value = vTmp;
+          // For PV nodes only, do a full PV search on the first move or after a fail
+          // high (in the latter case search only if value < beta), otherwise let the
+          // parent node fail low with value <= alpha and try another move.
+          if (PvNode && (moveCount == 1 || value > alpha))
+          {
+              (ss+1)->pv = pv;
+              (ss+1)->pv[0] = MOVE_NONE;
 
-              darkTryTimes++;
+              // Extend move from transposition table if we are about to dive into qsearch
+              if (move == ttMove && thisThread->rootDepth > 8)
+                  newDepth = std::max(newDepth, 1);
+
+              Value vTmp = -search<PV>(pos, ss+1, -beta, -alpha,
+                  std::min(maxNextDepth, newDepth), false);
+              if (vTmp < value) value = vTmp;
+          }
       }
 
-      // For PV nodes only, do a full PV search on the first move or after a fail
-      // high (in the latter case search only if value < beta), otherwise let the
-      // parent node fail low with value <= alpha and try another move.
-      if (PvNode && (moveCount == 1 || value > alpha))
-      {
-          (ss+1)->pv = pv;
-          (ss+1)->pv[0] = MOVE_NONE;
-
-          // Extend move from transposition table if we are about to dive into qsearch
-          if (move == ttMove && thisThread->rootDepth > 8)
-              newDepth = std::max(newDepth, 1);
-
-          vTmp = -search<PV>(pos, ss+1, -beta, -alpha,
-              isDarkDepth ? 0 : std::min(maxNextDepth, newDepth), false);
-          //get worse
-          if (darkTryTimes == 0 || vTmp < value) value = vTmp;
-          darkTryTimes++;
-      }
-      if (fromWhile) {
-          goto dark_while;
-      }
-dark_undo:
-      if (darkTryTimes == 0)value = vTmp;
       // Step 18. Undo move
       pos.undo_move(move);
 
@@ -1635,10 +1542,6 @@ dark_undo:
 #if SEARCHDEBUG
       if (debugPrint) {
           sync_cout << "move[" << __LINE__ << "]" << debugFen << " " << UCI::move(move) << " " << value << " " << pos.piece_on(to_sq(move)) << sync_endl;
-      }
-      if (darkPrint) {
-          if (!DarkSearchInfo.empty())
-              sync_cout << "dark[" << __LINE__ << "]d=" << depth<<"," << DarkSearchInfo << sync_endl;
       }
 #endif
 
@@ -2162,29 +2065,9 @@ dark_undo:
       quietCheckEvasions += !capture && ss->inCheck;
 
       // Make and search the move
-      Value vTmp;
-      int tryTypeTimes = 0, typecount = 0;
-      ScoreCalc SC(Limits.depth, depth, pos.isFirstSide());
-      bool isDarkDepth;
-      std::string cfen;
       if (pos.do_move(move, st, givesCheck)) {
-          StateInfo darkSt;
-          SC.setUs(pos.isFirstSide());
-          while (pos.getDark(darkSt, typecount, isDarkDepth))
-          {
-              vTmp = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, isDarkDepth ? 0 : depth - 1);
-              tryTypeTimes++;
-              SC.append(pos.piece_on(to_sq(move)), vTmp, typecount);
-              pos.setDark();
-          }
-          if (tryTypeTimes == 0) {
-              pos.undo_move(move);
-              continue;
-          }
-          else
-          {
-              value = SC.CalcEvg();
-          }
+          // Dark piece move — use flip_search to handle uncertainty (Pikafish approach)
+          value = -flip_search<nodeType>(pos, ss + 1, -beta, -alpha, true, depth, false);
       }
       else
       {
