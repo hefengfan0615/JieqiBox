@@ -1,6 +1,6 @@
 /*
   Pikafish, a UCI chess playing engine derived from Stockfish
-  Copyright (C) 2004-2022 The Pikafish developers (see AUTHORS file)
+  Copyright (C) 2004-2023 The Pikafish developers (see AUTHORS file)
 
   Pikafish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -16,25 +16,18 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef EVALUATE_H_INCLUDED
-#define EVALUATE_H_INCLUDED
+#ifndef PSQT_H_INCLUDED
+#define PSQT_H_INCLUDED
 
-#include <string>
-
-#include "material.h"
 #include "types.h"
 
-namespace Stockfish {
+namespace Stockfish::PSQT {
 
-class Position;
+extern Score psq[PIECE_NB][SQUARE_NB];
 
-namespace Eval {
+// Fill psqt array from a set of internally linked parameters
+void init();
 
-std::string trace(Position& pos);
-Value       evaluate(const Position& pos, Material::Table& materialTable);
+}  // namespace Stockfish::PSQT
 
-}  // namespace Eval
-
-}  // namespace Stockfish
-
-#endif  // #ifndef EVALUATE_H_INCLUDED
+#endif  // PSQT_H_INCLUDED

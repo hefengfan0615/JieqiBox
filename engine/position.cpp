@@ -622,12 +622,7 @@ DirtyPiece Position::do_move(Move                      m,
     ++st->pliesFromNull;
 
     if (pc == make_piece(us, KING))
-    {
-        dp.requires_refresh[us] = true;
-        bool mirror_before = Eval::NNUE::FeatureSet::KingBuckets[king_square(them)][from].second;
-        bool mirror_after  = Eval::NNUE::FeatureSet::KingBuckets[king_square(them)][to].second;
-        dp.requires_refresh[them] = (mirror_before != mirror_after);
-    }
+        dp.requires_refresh[us] = dp.requires_refresh[them] = true;
     else
         dp.requires_refresh[us] = dp.requires_refresh[them] = false;
 

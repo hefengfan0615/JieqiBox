@@ -32,8 +32,6 @@
 
 #include "history.h"
 #include "misc.h"
-#include "nnue/network.h"
-#include "nnue/nnue_accumulator.h"
 #include "numa.h"
 #include "position.h"
 #include "score.h"
@@ -131,19 +129,16 @@ struct LimitsType {
 // The UCI stores the uci options, thread pool, and transposition table.
 // This struct is used to easily forward data to the Search::Worker class.
 struct SharedState {
-    SharedState(const OptionsMap&                               optionsMap,
-                ThreadPool&                                     threadPool,
-                TranspositionTable&                             transpositionTable,
-                const LazyNumaReplicated<Eval::NNUE::Networks>& nets) :
+    SharedState(const OptionsMap&                   optionsMap,
+                ThreadPool&                         threadPool,
+                TranspositionTable&                 transpositionTable) :
         options(optionsMap),
         threads(threadPool),
-        tt(transpositionTable),
-        networks(nets) {}
+        tt(transpositionTable) {}
 
-    const OptionsMap&                               options;
-    ThreadPool&                                     threads;
-    TranspositionTable&                             tt;
-    const LazyNumaReplicated<Eval::NNUE::Networks>& networks;
+    const OptionsMap&   options;
+    ThreadPool&         threads;
+    TranspositionTable& tt;
 };
 
 class Worker;
@@ -246,8 +241,6 @@ class Worker {
 
     bool is_mainthread() const { return threadIdx == 0; }
 
-    void ensure_network_replicated();
-
     // Public because they need to be updatable by the stats
     ButterflyHistory mainHistory;
     LowPlyHistory    lowPlyHistory;
@@ -329,11 +322,6 @@ class Worker {
     const OptionsMap&                               options;
     ThreadPool&                                     threads;
     TranspositionTable&                             tt;
-    const LazyNumaReplicated<Eval::NNUE::Networks>& networks;
-
-    // Used by NNUE
-    Eval::NNUE::AccumulatorStack  accumulatorStack;
-    Eval::NNUE::AccumulatorCaches refreshTable;
 
     friend class Stockfish::ThreadPool;
     friend class SearchManager;

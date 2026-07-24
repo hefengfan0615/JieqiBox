@@ -1,6 +1,6 @@
 /*
   Pikafish, a UCI chess playing engine derived from Stockfish
-  Copyright (C) 2004-2022 The Pikafish developers (see AUTHORS file)
+  Copyright (C) 2004-2023 The Pikafish developers (see AUTHORS file)
 
   Pikafish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -16,25 +16,29 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef EVALUATE_H_INCLUDED
-#define EVALUATE_H_INCLUDED
+#ifndef MATERIAL_H_INCLUDED
+#define MATERIAL_H_INCLUDED
 
-#include <string>
-
-#include "material.h"
+#include "misc.h"
+#include "position.h"
 #include "types.h"
 
-namespace Stockfish {
+namespace Stockfish::Material {
 
-class Position;
+// Material::Entry contains various information about a material configuration.
+// It contains a material imbalance evaluation.
+struct Entry {
 
-namespace Eval {
+    Score imbalance() const { return score; }
 
-std::string trace(Position& pos);
-Value       evaluate(const Position& pos, Material::Table& materialTable);
+    Key   key;
+    Score score;
+};
 
-}  // namespace Eval
+using Table = HashTable<Entry, 8192>;
 
-}  // namespace Stockfish
+Entry* probe(const Position& pos, Table& table);
 
-#endif  // #ifndef EVALUATE_H_INCLUDED
+}  // namespace Stockfish::Material
+
+#endif  // MATERIAL_H_INCLUDED

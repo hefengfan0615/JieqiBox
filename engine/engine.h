@@ -28,7 +28,6 @@
 #include <utility>
 #include <vector>
 
-#include "nnue/network.h"
 #include "numa.h"
 #include "position.h"
 #include "search.h"

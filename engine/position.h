@@ -29,7 +29,6 @@
 #include <utility>
 
 #include "bitboard.h"
-#include "nnue/features/half_ka_v2_hm.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -100,8 +99,11 @@ class Position {
     int count(Color c) const;
     template<PieceType Pt>
     int    count() const;
+    template<PieceType Pt>
+    int    darkcount(Color c) const;
     Square king_square(Color c) const;
     bool   is_dark(Square s) const;
+    Key    material_key() const;
 
     // Checking
     Bitboard checkers() const;
@@ -243,6 +245,27 @@ inline int Position::count() const {
 inline Square Position::king_square(Color c) const { return kingSquare[c]; }
 
 inline bool Position::is_dark(Square s) const { return pieces(DARK) & s; }
+
+template<PieceType Pt>
+inline int Position::darkcount(Color c) const {
+    return popcount(pieces(c, Pt) & pieces(DARK));
+}
+
+inline Key Position::material_key() const {
+    Key key = 0;
+    for (Color c : {WHITE, BLACK})
+    {
+        int offset = c == WHITE ? 0 : 16;
+        key ^= Key(count<ROOK>(c) + count<ADVISOR>(c) * 3 + count<CANNON>(c) * 5
+                 + count<PAWN>(c) * 7 + count<KNIGHT>(c) * 11 + count<BISHOP>(c) * 13)
+            << (offset);
+        key ^= Key(darkcount<ROOK>(c) + darkcount<ADVISOR>(c) * 3
+                 + darkcount<CANNON>(c) * 5 + darkcount<PAWN>(c) * 7
+                 + darkcount<KNIGHT>(c) * 11 + darkcount<BISHOP>(c) * 13)
+            << (offset + 8);
+    }
+    return key;
+}
 
 inline Bitboard Position::attackers_to(Square s) const { return attackers_to(s, pieces()); }
 
