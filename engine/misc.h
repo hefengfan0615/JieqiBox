@@ -32,6 +32,8 @@
 #include <string_view>
 #include <vector>
 
+#include "types.h"
+
 #define stringify2(x) #x
 #define stringify(x) stringify2(x)
 
@@ -50,7 +52,13 @@ void start_logger(const std::string& fname);
 
 size_t str_to_size_t(const std::string& s);
 
-std::stringstream read_compressed_nnue(const std::string& fpath);
+template<class Entry, int Size>
+struct HashTable {
+  Entry* operator[](Key key) { return &table[(uint32_t)key & (Size - 1)]; }
+
+private:
+  std::vector<Entry> table = std::vector<Entry>(Size);
+};
 
 #if defined(__linux__)
 

@@ -366,7 +366,7 @@ Value Evaluation::value(Material::Table& materialTable) {
 
 // evaluate() is the evaluator for the outer world. It returns a static
 // evaluation of the position from the point of view of the side to move.
-Value Eval::evaluate(const Position& pos, Material::Table& materialTable) {
+Value evaluate(const Position& pos, Material::Table& materialTable) {
 
     Value v = Evaluation(pos).value(materialTable);
 
@@ -383,7 +383,7 @@ Value Eval::evaluate(const Position& pos, Material::Table& materialTable) {
 // trace() is like evaluate(), but instead of returning a value, it returns
 // a string (suitable for outputting to stdout) that contains the detailed
 // descriptions and values of each evaluation term.
-std::string Eval::trace(Position& pos) {
+std::string trace(Position& pos, Material::Table& materialTable) {
 
     if (pos.checkers())
         return "Final evaluation: none (in check)";

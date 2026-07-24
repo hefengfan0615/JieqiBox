@@ -21,6 +21,7 @@
 #include <algorithm>
 
 #include "bitboard.h"
+#include "score.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -132,7 +133,7 @@ void init() {
 
   for (Piece pc : {W_ROOK, W_ADVISOR, W_CANNON, W_PAWN, W_KNIGHT, W_BISHOP, W_KING})
   {
-    Score score = make_score(PieceValue[MG][pc], PieceValue[EG][pc]);
+    Score score = make_score(PieceValue[pc], PieceValue[pc]);
 
     for (Square s = SQ_A0; s <= SQ_I9; ++s)
     {

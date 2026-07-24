@@ -32,7 +32,6 @@ namespace Stockfish {
 
 class Position;
 class Move;
-class Score;
 enum Square : int8_t;
 using Value = int;
 
@@ -43,7 +42,7 @@ class UCIEngine {
     void loop();
 
     static int         to_cp(Value v, const Position& pos);
-    static std::string format_score(const Score& s);
+    static std::string format_score(Value v);
     static std::string square(Square s);
     static std::string move(Move m);
     static std::string wdl(Value v, const Position& pos);

@@ -21,6 +21,7 @@
 
 #include "misc.h"
 #include "position.h"
+#include "score.h"
 #include "types.h"
 
 namespace Stockfish::Material {

@@ -19,6 +19,7 @@
 #ifndef PSQT_H_INCLUDED
 #define PSQT_H_INCLUDED
 
+#include "score.h"
 #include "types.h"
 
 namespace Stockfish::PSQT {

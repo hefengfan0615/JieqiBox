@@ -31,10 +31,10 @@
 #include <vector>
 
 #include "history.h"
+#include "material.h"
 #include "misc.h"
 #include "numa.h"
 #include "position.h"
-#include "score.h"
 #include "timeman.h"
 #include "types.h"
 
@@ -131,14 +131,17 @@ struct LimitsType {
 struct SharedState {
     SharedState(const OptionsMap&                   optionsMap,
                 ThreadPool&                         threadPool,
-                TranspositionTable&                 transpositionTable) :
+                TranspositionTable&                 transpositionTable,
+                Material::Table&                    materialTableRef) :
         options(optionsMap),
         threads(threadPool),
-        tt(transpositionTable) {}
+        tt(transpositionTable),
+        materialTable(materialTableRef) {}
 
     const OptionsMap&   options;
     ThreadPool&         threads;
     TranspositionTable& tt;
+    Material::Table&    materialTable;
 };
 
 class Worker;
@@ -153,7 +156,7 @@ class ISearchManager {
 
 struct InfoShort {
     int   depth;
-    Score score;
+    Value score;
 };
 
 struct InfoFull: InfoShort {
@@ -322,6 +325,7 @@ class Worker {
     const OptionsMap&                               options;
     ThreadPool&                                     threads;
     TranspositionTable&                             tt;
+    Material::Table&                                materialTable;
 
     friend class Stockfish::ThreadPool;
     friend class SearchManager;

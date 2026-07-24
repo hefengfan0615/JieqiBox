@@ -884,7 +884,6 @@ help:
 	echo "help                    > Display architecture details" && \
 	echo "profile-build           > standard build with profile-guided optimization" && \
 	echo "build                   > skip profile-guided optimization" && \
-	echo "net                     > Download the default nnue nets" && \
 	echo "strip                   > Strip executable" && \
 	echo "install                 > Install executable" && \
 	echo "clean                   > Clean up" && \
@@ -950,7 +949,7 @@ ifneq ($(SUPPORTED_ARCH), true)
 endif
 
 
-.PHONY: help analyze build profile-build strip install clean net \
+.PHONY: help analyze build profile-build strip install clean \
 	objclean profileclean config-sanity \
 	config-sanity \
 	icx-profile-use icx-profile-make \
@@ -958,13 +957,13 @@ endif
 	clang-profile-use clang-profile-make FORCE \
 	format analyze
 
-analyze: net config-sanity objclean
+analyze: config-sanity objclean
 	$(MAKE) -k ARCH=$(ARCH) COMP=$(COMP) $(notdir $(patsubst %.cpp,%.o,$(filter-out ./external/%,$(filter %.cpp,$(SRCS)))))
 
-build: net config-sanity
+build: config-sanity
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) all
 
-profile-build: net config-sanity objclean profileclean
+profile-build: config-sanity objclean profileclean
 	@echo ""
 	@echo "Step 1/4. Building instrumented executable ..."
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) $(profile_make)
@@ -1006,10 +1005,6 @@ profileclean:
 	@rm -f pikafish.res
 	@rm -f ./-lstdc++.res
 
-# evaluation network (nnue)
-net:
-	@$(SHELL) ../scripts/net.sh
-
 format:
 	$(CLANG-FORMAT) -i $(filter %.cpp,$(SRCS)) $(HEADERS) -style=file
 
@@ -1019,7 +1014,7 @@ format:
 
 all: $(EXE) .depend
 
-config-sanity: net
+config-sanity:
 	@echo "" && \
 	echo "Config:" && \
 	echo "debug: '$(debug)'" && \
@@ -1143,6 +1138,6 @@ icx-profile-use:
 .depend: $(SRCS)
 	-@$(CXX) $(DEPENDFLAGS) -MM $(SRCS) > $@ 2> /dev/null
 
-ifeq (, $(filter $(MAKECMDGOALS), help strip install clean net objclean profileclean format config-sanity))
+ifeq (, $(filter $(MAKECMDGOALS), help strip install clean objclean profileclean format config-sanity))
 -include .depend
 endif

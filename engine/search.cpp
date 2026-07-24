@@ -34,8 +34,6 @@
 #include "misc.h"
 #include "movegen.h"
 #include "movepick.h"
-#include "nnue/network.h"
-#include "nnue/nnue_accumulator.h"
 #include "position.h"
 #include "thread.h"
 #include "timeman.h"
@@ -132,22 +130,11 @@ Search::Worker::Worker(SharedState&                    sharedState,
     options(sharedState.options),
     threads(sharedState.threads),
     tt(sharedState.tt),
-    networks(sharedState.networks),
-    refreshTable(networks[token]) {
+    materialTable(sharedState.materialTable) {
     clear();
 }
 
-void Search::Worker::ensure_network_replicated() {
-    // Access once to force lazy initialization.
-    // We do this because we want to avoid initialization during search.
-    (void) (networks[numaAccessToken]);
-}
-
 void Search::Worker::start_searching() {
-
-    accumulatorStack.reset();
-
-    // Non-main threads go directly to iterative_deepening()
     if (!is_mainthread())
     {
         iterative_deepening();
@@ -161,7 +148,7 @@ void Search::Worker::start_searching() {
     if (rootMoves.empty())
     {
         rootMoves.emplace_back(Move::none());
-        main_manager()->updates.onUpdateNoMoves({0, {-VALUE_MATE, rootPos}});
+        main_manager()->updates.onUpdateNoMoves({0, -VALUE_MATE});
     }
     else
     {
@@ -478,14 +465,12 @@ void Search::Worker::do_move(Position& pos, const Move move, StateInfo& st) {
 void Search::Worker::do_move(Position& pos, const Move move, StateInfo& st, const bool givesCheck) {
     DirtyPiece dp = pos.do_move(move, st, givesCheck, &tt);
     nodes.fetch_add(1, std::memory_order_relaxed);
-    accumulatorStack.push(dp);
 }
 
 void Search::Worker::do_null_move(Position& pos, StateInfo& st) { pos.do_null_move(st, tt); }
 
 void Search::Worker::undo_move(Position& pos, const Move move) {
     pos.undo_move(move);
-    accumulatorStack.pop();
 }
 
 void Search::Worker::undo_null_move(Position& pos) { pos.undo_null_move(); }
@@ -514,8 +499,6 @@ void Search::Worker::clear() {
 
     for (size_t i = 1; i < reductions.size(); ++i)
         reductions[i] = int(2321 / (849 / 10.0) * std::log(i));
-
-    refreshTable.clear(networks[numaAccessToken]);
 }
 
 
@@ -1686,17 +1669,13 @@ Value Search::Worker::flip_search(
 
     assert(total != 0);
 
-    DirtyPiece dp = accumulatorStack.latest().dirtyPiece;
-
     // Collect per-flip results
     struct Entry { Value value; int count; };
     std::vector<Entry> results;
     results.reserve(restPieces.size());
 
     for (auto& [piece, num] : restPieces) {
-        accumulatorStack.pop();
-        Piece flipped_piece = pos.do_flip((ss - 1)->currentMove.to_sq(), piece, &dp, &tt);
-        accumulatorStack.push(dp);
+        Piece flipped_piece = pos.do_flip((ss - 1)->currentMove.to_sq(), piece, nullptr, &tt);
 
         Value value;
 
@@ -1771,8 +1750,7 @@ TimePoint Search::Worker::elapsed() const {
 TimePoint Search::Worker::elapsed_time() const { return main_manager()->tm.elapsed_time(); }
 
 Value Search::Worker::evaluate(const Position& pos) {
-    return Eval::evaluate(networks[numaAccessToken], pos, accumulatorStack, refreshTable,
-                          optimism[pos.side_to_move()]);
+    return Eval::evaluate(pos, materialTable);
 }
 
 namespace {
@@ -1991,7 +1969,7 @@ void SearchManager::pv(const Search::Worker&     worker,
         info.depth    = d;
         info.selDepth = rootMoves[i].selDepth;
         info.multiPV  = i + 1;
-        info.score    = {v, pos};
+        info.score    = v;
         info.wdl      = wdl;
 
         if (i == pvIdx && updated)  // previous-scores are exact

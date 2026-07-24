@@ -81,7 +81,6 @@ void UCIEngine::init_search_update_listeners() {
     engine.set_on_update_full(
       [this](const auto& i) { on_update_full(i, engine.get_options()["UCI_ShowWDL"]); });
     engine.set_on_bestmove([](const auto& bm, const auto& p) { on_bestmove(bm, p); });
-    engine.set_on_verify_networks([](const auto& s) { print_info_string(s); });
 }
 
 void UCIEngine::loop() {
@@ -149,15 +148,6 @@ void UCIEngine::loop() {
             engine.trace_eval();
         else if (token == "compiler")
             sync_cout << compiler_info() << sync_endl;
-        else if (token == "export_net")
-        {
-            std::pair<std::optional<std::string>, std::string> files;
-
-            if (is >> std::skipws >> files.second)
-                files.first = files.second;
-
-            engine.save_network(files);
-        }
         else if (token == "--help" || token == "help" || token == "--license" || token == "license")
             sync_cout
               << "\nPikafish is a powerful xiangqi engine for playing and analyzing."
@@ -305,7 +295,6 @@ void UCIEngine::benchmark(std::istream& args) {
     engine.set_on_iter([](const auto&) {});
     engine.set_on_update_no_moves([](const auto&) {});
     engine.set_on_bestmove([](const auto&, const auto&) {});
-    engine.set_on_verify_networks([](const auto&) {});
 
     Benchmark::BenchmarkSetup setup = Benchmark::setup_benchmark(args);
 
@@ -540,16 +529,17 @@ double win_rate_model_double(Value v, const Position& pos) {
 }
 }
 
-std::string UCIEngine::format_score(const Score& s) {
-    const auto format = overload{[](Score::Mate mate) -> std::string {
-                                     auto m = (mate.plies > 0 ? (mate.plies + 1) : mate.plies) / 2;
-                                     return std::string("mate ") + std::to_string(m);
-                                 },
-                                 [](Score::InternalUnits units) -> std::string {
-                                     return std::string("cp ") + std::to_string(units.value);
-                                 }};
+std::string UCIEngine::format_score(Value v) {
+    assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);
 
-    return s.visit(format);
+    if (!is_decisive(v))
+        return std::string("cp ") + std::to_string(v);
+    else
+    {
+        auto distance = VALUE_MATE - std::abs(v);
+        auto m        = (v > 0) ? (distance + 1) / 2 : -(distance + 1) / 2;
+        return std::string("mate ") + std::to_string(m);
+    }
 }
 
 // Turns a Value to an integer centipawn number,

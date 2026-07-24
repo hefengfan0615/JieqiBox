@@ -30,7 +30,7 @@ class Position;
 
 namespace Eval {
 
-std::string trace(Position& pos);
+std::string trace(Position& pos, Material::Table& materialTable);
 Value       evaluate(const Position& pos, Material::Table& materialTable);
 
 }  // namespace Eval

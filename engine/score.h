@@ -19,46 +19,28 @@
 #ifndef SCORE_H_INCLUDED
 #define SCORE_H_INCLUDED
 
-#include <variant>
-#include <utility>
-
 #include "types.h"
 
 namespace Stockfish {
 
-class Position;
-
-class Score {
-   public:
-    struct Mate {
-        int plies;
-    };
-
-    struct InternalUnits {
-        int value;
-    };
-
-    Score() = default;
-    Score(Value v, const Position& pos);
-
-    template<typename T>
-    bool is() const {
-        return std::holds_alternative<T>(score);
-    }
-
-    template<typename T>
-    T get() const {
-        return std::get<T>(score);
-    }
-
-    template<typename F>
-    decltype(auto) visit(F&& f) const {
-        return std::visit(std::forward<F>(f), score);
-    }
-
-   private:
-    std::variant<Mate, InternalUnits> score;
+struct Score {
+    Value mg, eg;
 };
+
+constexpr Score make_score(Value mg, Value eg) { return {mg, eg}; }
+constexpr Value mg_value(Score s) { return s.mg; }
+constexpr Value eg_value(Score s) { return s.eg; }
+
+constexpr Score SCORE_ZERO = {0, 0};
+
+constexpr Score operator+(Score s1, Score s2) { return {s1.mg + s2.mg, s1.eg + s2.eg}; }
+constexpr Score operator-(Score s1, Score s2) { return {s1.mg - s2.mg, s1.eg - s2.eg}; }
+constexpr Score operator-(Score s) { return {-s.mg, -s.eg}; }
+constexpr Score& operator+=(Score& s1, Score s2) { s1 = s1 + s2; return s1; }
+constexpr Score& operator-=(Score& s1, Score s2) { s1 = s1 - s2; return s1; }
+constexpr Score operator*(int i, Score s) { return {i * s.mg, i * s.eg}; }
+constexpr Score operator*(Score s, int i) { return {s.mg * i, s.eg * i}; }
+constexpr Score operator/(Score s, int i) { return {s.mg / i, s.eg / i}; }
 
 }
 
