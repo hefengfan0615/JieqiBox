@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -16,23 +16,28 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "score.h"
 
-#ifndef PSQT_H_INCLUDED
-#define PSQT_H_INCLUDED
+#include <cassert>
+#include <cmath>
+#include <cstdlib>
 
+#include "uci.h"
 
-#include "types.h"
+namespace Stockfish {
 
+Score::Score(Value v, const Position& pos) {
+    assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);
 
-namespace Stockfish::PSQT
-{
+    if (!is_decisive(v))
+    {
+        score = InternalUnits{UCIEngine::to_cp(v, pos)};
+    }
+    else
+    {
+        auto distance = VALUE_MATE - std::abs(v);
+        score         = (v > 0) ? Mate{distance} : Mate{-distance};
+    }
+}
 
-extern Score psq[PIECE_NB][SQUARE_NB];
-extern Score psqCap[RANK_NB][int(FILE_NB) / 2 + 1];
-// Fill psqt array from a set of internally linked parameters
-void init();
-
-} // namespace Stockfish::PSQT
-
-
-#endif // PSQT_H_INCLUDED
+}
