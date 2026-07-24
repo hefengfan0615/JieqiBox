@@ -298,7 +298,7 @@ void Search::Worker::iterative_deepening() {
                 // Adjust the effective depth searched, but ensure at least one
                 // effective increment for every four searchAgain steps (see issue #2717).
                 Depth adjustedDepth =
-                  std::max(1, rootDepth - failedHighCnt - 3 * (searchAgainCounter + 1) / 3);
+                  std::max(1, rootDepth - failedHighCnt - (searchAgainCounter + 1) / 3);
                 rootDelta = beta - alpha;
                 bestValue = search<Root>(rootPos, ss, alpha, beta, adjustedDepth, false);
 
@@ -1431,7 +1431,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // Step 2. Check for repetition or maximum ply reached
     Value result = VALUE_NONE;
     if (pos.rule_judge(result, ss->ply))
-        return result;
+        return result == VALUE_DRAW ? value_draw(thisThread->nodes) : result;
     if (result != VALUE_NONE)
     {
         assert(result != VALUE_DRAW);
@@ -1439,11 +1439,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // 2 fold result is mate for us, the only chance for the opponent is to get a draw
         // We can guarantee to get at least a draw score during searching for that line
         if (result > VALUE_DRAW)
-            alpha = std::max(alpha, VALUE_DRAW);
+            alpha = std::max(alpha, VALUE_DRAW - 1);
         // 2 fold result is mated for us, the only chance for us is to get a draw
         // We can guarantee to get no more than a draw score during searching for that line
         else
-            beta = std::min(beta, VALUE_DRAW);
+            beta = std::min(beta, VALUE_DRAW + 1);
 
         if (alpha >= beta)
             return alpha;
